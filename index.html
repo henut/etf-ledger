@@ -487,7 +487,17 @@ function updateSyncStatusUI() {
   }
   var lastSync = cfg.lastSyncTime ? new Date(cfg.lastSyncTime) : null;
   var timeStr = lastSync ? (lastSync.getMonth()+1) + '/' + lastSync.getDate() + ' ' + lastSync.getHours() + ':' + String(lastSync.getMinutes()).padStart(2,'0') : '从未';
-  el.textContent = '☁ 已连接 · 上次同步: ' + timeStr;
+  // 计算下次同步时间
+  var lastMs = lastSync ? lastSync.getTime() : 0;
+  var elapsed = Date.now() - lastMs;
+  var remaining = SYNC_INTERVAL_MS - elapsed;
+  var nextStr = '';
+  if (remaining > 0 && cfg.gistId) {
+    var hrs = Math.floor(remaining / 3600000);
+    var mins = Math.floor((remaining % 3600000) / 60000);
+    nextStr = ' · 下次同步: ' + (hrs > 0 ? hrs + '时' : '') + mins + '分后';
+  }
+  el.textContent = '☁ 已连接 · 上次同步: ' + timeStr + nextStr;
   el.className = 'sync-status synced';
 }
 
@@ -633,21 +643,25 @@ function cloudPull() {
   });
 }
 
-// 数据变更后自动同步（防抖 5 秒）
+// 数据变更后自动推送（防抖 5 秒，仅推送不拉取）
 function autoSyncDebounced() {
   var cfg = loadSyncConfig();
-  if (!cfg.token) return; // 未配置 Token 不自动同步
+  if (!cfg.token) return;
   clearTimeout(_syncDebounceTimer);
   _syncDebounceTimer = setTimeout(function() {
     cloudPush();
   }, 5000);
 }
 
-// 页面加载时尝试拉取
-function tryAutoPull() {
+// 6 小时周期同步（拉取+推送）
+var SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6小时
+var _periodicSyncTimer = null;
+
+function periodicSync() {
   var cfg = loadSyncConfig();
   if (!cfg.token || !cfg.gistId) return;
-  // 静默拉取，不弹 Toast
+
+  // 先拉取云端数据合并，再推送本地最新
   fetch('https://api.github.com/gists/' + cfg.gistId, {
     headers: {
       'Authorization': 'token ' + cfg.token,
@@ -657,30 +671,62 @@ function tryAutoPull() {
   .then(function(res) { if (!res.ok) throw new Error(''); return res.json(); })
   .then(function(gist) {
     var file = gist.files && gist.files['etf-ledger-sync.json'];
-    if (!file || !file.content) return;
+    if (!file || !file.content) { cloudPush(); return; }
     var data = JSON.parse(file.content);
     var records = Array.isArray(data) ? data : (data.records || []);
     var existing = loadRecords();
     var existingIds = new Set(existing.map(function(r){ return r.id; }));
     var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
-    if (newRecords.length === 0) return; // 无新数据
 
-    var mergedRecords = existing.concat(newRecords);
-    if (data.nameMap) {
-      var existingMap = loadNameMap();
-      Object.assign(existingMap, data.nameMap);
-      saveNameMap(existingMap);
+    if (newRecords.length > 0) {
+      var mergedRecords = existing.concat(newRecords);
+      if (data.nameMap) {
+        var existingMap = loadNameMap();
+        Object.assign(existingMap, data.nameMap);
+        saveNameMap(existingMap);
+      }
+      if (data.feeConfig) saveFeeConfig(data.feeConfig);
+      saveRecords(mergedRecords);
+      updateFeeDisplay();
+      refreshAll();
+      showToast('☁ 自动同步：拉取 ' + newRecords.length + ' 条新数据');
     }
-    if (data.feeConfig) saveFeeConfig(data.feeConfig);
-
-    saveRecords(mergedRecords);
-    updateFeeDisplay();
-    refreshAll();
-    showToast('☁ 已自动同步 ' + newRecords.length + ' 条新数据');
+    // 拉取完成后推送本地最新
+    cloudPush();
   })
   .catch(function() {
-    // 静默失败，不打扰用户
+    // 拉取失败也尝试推送
+    cloudPush();
   });
+}
+
+// 启动周期同步
+function startPeriodicSync() {
+  if (_periodicSyncTimer) clearInterval(_periodicSyncTimer);
+  var cfg = loadSyncConfig();
+  if (!cfg.token || !cfg.gistId) return;
+
+  // 首次：检查是否超过6小时未同步
+  var lastSync = cfg.lastSyncTime ? new Date(cfg.lastSyncTime).getTime() : 0;
+  var elapsed = Date.now() - lastSync;
+  var firstDelay = Math.max(0, SYNC_INTERVAL_MS - elapsed);
+
+  setTimeout(function() {
+    periodicSync();
+    // 之后每6小时执行一次
+    _periodicSyncTimer = setInterval(periodicSync, SYNC_INTERVAL_MS);
+  }, firstDelay);
+}
+
+// 页面加载时：3 秒后首次拉取（保持快速响应），然后启动6小时周期
+function initSync() {
+  var cfg = loadSyncConfig();
+  if (!cfg.token || !cfg.gistId) return;
+
+  // 首次加载先拉取一次
+  setTimeout(tryAutoPull, 3000);
+  // 启动6小时周期
+  startPeriodicSync();
 }
 
 // ========== 数据导出 ==========
@@ -1211,8 +1257,9 @@ function openLinkOverlay(sellId) {
       html += '</div>';
       html += '<div class="batch-row">';
       html += '<span style="font-size:13px;">本次关联:</span>';
-      html += '<input type="number" min="0" max="' + origRemaining + '" value="' + linkedQty + '" data-buy-id="' + buy.id + '" data-max="' + origRemaining + '" oninput="onBatchInput()" style="width:100px;">';
+      html += '<input type="number" min="0" max="' + origRemaining + '" value="' + linkedQty + '" data-buy-id="' + buy.id + '" data-max="' + origRemaining + '" oninput="onBatchInput()" style="width:100px;" id="batch-input-' + buy.id + '">';
       html += '<span style="font-size:12px;color:#999;">份</span>';
+      html += '<button type="button" onclick="(function(){var inp=document.getElementById(\'batch-input-' + buy.id + '\');inp.value=' + origRemaining + ';onBatchInput();})()" style="padding:2px 8px;font-size:12px;background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;border-radius:4px;cursor:pointer;margin-left:4px;">全部</button>';
       var profit = (sellNetPrice - buyCostPrice) * linkedQty;
       html += '<span id="profit-' + buy.id + '" class="' + (profit >= 0 ? 'profit-positive' : 'profit-negative') + '" style="font-size:13px;">';
       if (linkedQty > 0) html += (profit >= 0 ? '+' : '') + profit.toFixed(2);
@@ -1932,8 +1979,11 @@ function refreshAll() {
   updateFeeDisplay();
   updateSyncStatusUI();
 
-  // 页面加载 3 秒后自动拉取云端数据
-  setTimeout(tryAutoPull, 3000);
+  // 初始化云同步：3秒后首次拉取 + 启动6小时周期同步
+  initSync();
+
+  // 每分钟刷新同步状态栏倒计时
+  setInterval(updateSyncStatusUI, 60000);
 
   document.getElementById('link-overlay').addEventListener('click', function(e) {
     if (e.target === this) closeOverlay();
