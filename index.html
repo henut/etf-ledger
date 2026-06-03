@@ -146,9 +146,44 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
 .sync-info-row { display: flex; gap: 12px; font-size: 12px; color: #888; margin-top: 10px; flex-wrap: wrap; }
 .sync-info-row span { white-space: nowrap; }
 
-/* 导入/导出提示弹窗 */
-.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: #fff; padding: 10px 24px; border-radius: 20px; font-size: 13px; z-index: 999; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
-.toast.show { opacity: 1; }
+/* 持仓面板 */
+.hp-summary { background: linear-gradient(135deg, #E4393C 0%, #C62828 100%); color: #fff; border-radius: 0 0 18px 18px; padding: 16px 16px 20px; margin: -10px -10px 12px; }
+.hp-summary .hp-row1 { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.hp-summary .hp-title { font-size: 13px; opacity: 0.85; margin-bottom: 4px; }
+.hp-summary .hp-big { font-size: 24px; font-weight: 700; letter-spacing: 0.5px; }
+.hp-summary .hp-pct { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+.hp-summary .hp-row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 12px; }
+.hp-summary .hp-item .hp-lbl { font-size: 11px; opacity: 0.75; margin-bottom: 3px; }
+.hp-summary .hp-item .hp-val { font-size: 14px; font-weight: 600; }
+.hp-stock-list { }
+.hp-stock-header { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 6px 12px; font-size: 11px; color: #999; border-bottom: 1px solid #f0f0f0; background: #fafafa; border-radius: 8px 8px 0 0; }
+.hp-stock-header span:last-child, .hp-stock-row .hp-col-right { text-align: right; }
+.hp-stock-header span:nth-child(2), .hp-stock-row .hp-col-mid1 { text-align: right; }
+.hp-stock-header span:nth-child(3), .hp-stock-row .hp-col-mid2 { text-align: right; }
+.hp-stock-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 12px 12px; border-bottom: 1px solid #f8f8f8; cursor: pointer; transition: background 0.15s; }
+.hp-stock-row:hover { background: #FFF5F5; }
+.hp-stock-row:last-child { border-bottom: none; }
+.hp-stock-row .hp-name { font-size: 14px; font-weight: 600; color: #E4393C; line-height: 1.3; }
+.hp-stock-row .hp-code { font-size: 11px; color: #999; margin-top: 2px; }
+.hp-stock-row .hp-mktval { font-size: 14px; font-weight: 600; color: #333; text-align: right; }
+.hp-stock-row .hp-mktval-sub { font-size: 11px; color: #999; text-align: right; margin-top: 2px; }
+.hp-stock-row .hp-pnl { font-size: 14px; font-weight: 600; text-align: right; }
+.hp-stock-row .hp-pnl-pct { font-size: 11px; text-align: right; margin-top: 2px; }
+.hp-stock-row .hp-qty { font-size: 13px; text-align: right; color: #333; line-height: 1.3; }
+.hp-stock-row .hp-qty-avail { font-size: 11px; color: #999; text-align: right; margin-top: 2px; }
+.hp-stock-row .hp-cost { font-size: 13px; text-align: right; color: #333; }
+.hp-stock-row .hp-nowprice { font-size: 11px; color: #999; text-align: right; margin-top: 2px; }
+.hp-loading { font-size: 12px; color: #bbb; font-style: italic; }
+.hp-refresh-bar { display: flex; justify-content: flex-end; align-items: center; padding: 8px 12px 4px; gap: 8px; }
+.hp-last-update { font-size: 11px; color: #bbb; }
+.hp-empty { text-align: center; padding: 60px 20px; color: #ccc; font-size: 14px; }
+
+/* 持仓面板 正/负色 */
+.hp-pos { color: #E4393C; }
+.hp-neg { color: #2E7D32; }
+.hp-zero { color: #999; }
+
+
 
 @media (max-width: 600px) {
   .form-grid { grid-template-columns: 1fr; }
@@ -176,6 +211,7 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
 <div class="tab-bar">
   <button class="active" onclick="switchTab(event,'buy')">买入</button>
   <button onclick="switchTab(event,'sell')">卖出</button>
+  <button onclick="switchTab(event,'holdings')">持仓</button>
   <button onclick="switchTab(event,'records')">交易记录</button>
   <button onclick="switchTab(event,'stats')">盈亏统计</button>
 </div>
@@ -235,6 +271,11 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
       </div>
       <div id="sell-msg" style="margin-top:8px;font-size:13px;"></div>
     </div>
+  </div>
+
+  <!-- 持仓Tab -->
+  <div id="tab-holdings" class="tab-content">
+    <div id="holdings-panel-container"></div>
   </div>
 
   <!-- 交易记录Tab -->
@@ -1492,13 +1533,14 @@ function closeBuyOverlay() {
 // ========== Tab 切换（修复全局 event 依赖问题） ==========
 function switchTab(evt, tab) {
   var buttons = document.querySelectorAll('.tab-bar button');
-  var tabNames = ['buy', 'sell', 'records', 'stats'];
+  var tabNames = ['buy', 'sell', 'holdings', 'records', 'stats'];
   buttons.forEach(function(b) { b.classList.remove('active'); });
   document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
   if (evt && evt.target) evt.target.classList.add('active');
   document.getElementById('tab-' + tab).classList.add('active');
 
   if (tab === 'sell') renderHoldings();
+  if (tab === 'holdings') renderHoldingPanel();
   if (tab === 'records') renderRecords();
   if (tab === 'stats') renderStats();
 }
@@ -1506,14 +1548,176 @@ function switchTab(evt, tab) {
 // 内部调用（编辑跳转）
 function switchTabDirect(tab) {
   var buttons = document.querySelectorAll('.tab-bar button');
-  var tabNames = ['buy', 'sell', 'records', 'stats'];
+  var tabNames = ['buy', 'sell', 'holdings', 'records', 'stats'];
   buttons.forEach(function(b, i) { b.classList.toggle('active', tabNames[i] === tab); });
   document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
   document.getElementById('tab-' + tab).classList.add('active');
 
   if (tab === 'sell') renderHoldings();
+  if (tab === 'holdings') renderHoldingPanel();
   if (tab === 'records') renderRecords();
   if (tab === 'stats') renderStats();
+}
+
+// ========== 持仓面板（券商持仓页风格） ==========
+var _hpPriceCache = {};
+
+function renderHoldingPanel() {
+  var records = loadRecords();
+  var nameMap = loadNameMap();
+  var container = document.getElementById('holdings-panel-container');
+
+  // 汇总每只 ETF 的持仓
+  var etfMap = {};
+  records.forEach(function(rec) {
+    if (rec.type === 'buy' && rec.remaining > 0) {
+      if (!etfMap[rec.code]) {
+        etfMap[rec.code] = {
+          code: rec.code,
+          name: rec.name || nameMap[rec.code] || BUILTIN_ETF_MAP[rec.code] || rec.code,
+          totalQty: 0,
+          totalCost: 0
+        };
+      }
+      etfMap[rec.code].totalQty += rec.remaining;
+      etfMap[rec.code].totalCost += (rec.amount + rec.fee) / rec.quantity * rec.remaining;
+    }
+  });
+
+  var codes = Object.keys(etfMap).sort();
+
+  if (codes.length === 0) {
+    container.innerHTML = '<div class="hp-empty">📭 暂无持仓，快去买入第一只 ETF 吧！</div>';
+    return;
+  }
+
+  // 计算各只均价
+  codes.forEach(function(code) {
+    var e = etfMap[code];
+    e.avgCost = e.totalQty > 0 ? e.totalCost / e.totalQty : 0;
+  });
+
+  // 渲染骨架（先用成本价占位）
+  function buildHTML(priceMap) {
+    var allLoading = !priceMap || Object.keys(priceMap).length === 0;
+
+    var now = new Date();
+    var ts = now.getHours() + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+
+    // 顶部工具栏：仅显示刷新按钮和更新时间
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px 6px;">';
+    html += '<span style="font-size:12px;color:#999;">' + (allLoading ? '行情获取中…' : '更新于 ' + ts) + '</span>';
+    html += '<button onclick="refreshHoldingPanel()" style="background:#fff;color:#E4393C;border:1px solid #FFCDD2;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.06);">↻ 刷新行情</button>';
+    html += '</div>';
+
+    html += '<div style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden;">';
+    html += '<div class="hp-stock-header"><span>名称/代码</span><span>市值/盈亏</span><span>持仓/可用</span><span>成本/现价</span></div>';
+
+    codes.forEach(function(code) {
+      var e = etfMap[code];
+      var cached = priceMap && priceMap[code];
+      var price = cached && cached.price ? cached.price : 0;
+      var mktVal = price > 0 ? price * e.totalQty : null;
+      var pnl = (mktVal !== null) ? mktVal - e.totalCost : null;
+      var pnlPct = (pnl !== null && e.totalCost > 0) ? pnl / e.totalCost * 100 : null;
+      var pnlColorClass = pnl === null ? 'hp-loading' : (pnl > 0 ? 'hp-pos' : (pnl < 0 ? 'hp-neg' : 'hp-zero'));
+
+      html += '<div class="hp-stock-row" onclick="switchTabDirect(\'stats\')">';
+      // col1: 名称/代码
+      html += '<div><div class="hp-name">' + e.name + '</div><div class="hp-code">' + code + '</div></div>';
+      // col2: 市值/盈亏
+      html += '<div>';
+      html += '<div class="hp-mktval">' + (mktVal !== null ? mktVal.toFixed(2) : e.totalCost.toFixed(2) + '*') + '</div>';
+      if (pnl !== null) {
+        html += '<div class="hp-pnl-pct ' + pnlColorClass + '">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '<br>' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</div>';
+      } else {
+        html += '<div class="hp-pnl-pct hp-loading" id="hp-pnl-' + code + '">获取中…</div>';
+      }
+      html += '</div>';
+      // col3: 持仓数量（ETF T+0可用 = 当天买当天就能卖，简化为持仓即可用）
+      html += '<div><div class="hp-qty">' + e.totalQty.toLocaleString() + '</div><div class="hp-qty-avail">可用 ' + e.totalQty.toLocaleString() + '</div></div>';
+      // col4: 成本/现价
+      html += '<div>';
+      html += '<div class="hp-cost">' + e.avgCost.toFixed(3) + '</div>';
+      if (price > 0) {
+        var priceColorClass = price > e.avgCost ? 'hp-pos' : (price < e.avgCost ? 'hp-neg' : 'hp-zero');
+        html += '<div class="hp-nowprice ' + priceColorClass + '" id="hp-nowprice-' + code + '">' + price.toFixed(3) + '</div>';
+      } else {
+        html += '<div class="hp-nowprice hp-loading" id="hp-nowprice-' + code + '">获取中…</div>';
+      }
+      html += '</div>';
+      html += '</div>'; // hp-stock-row end
+    });
+
+    html += '</div>'; // list card end
+    return html;
+  }
+
+  container.innerHTML = buildHTML(null);
+
+  // 拉取实时价格，成功后更新
+  fetchHoldingPrices(etfMap, codes, function(priceMap) {
+    container.innerHTML = buildHTML(priceMap);
+  });
+}
+
+function fetchHoldingPrices(etfMap, codes, callback) {
+  var priceMap = {};
+  var done = 0;
+  var total = codes.length;
+  if (total === 0) { callback(priceMap); return; }
+
+  codes.forEach(function(code) {
+    // 60s 缓存
+    var cache = _hpPriceCache[code];
+    if (cache && (Date.now() - cache.time < 60000)) {
+      priceMap[code] = { price: cache.price };
+      done++;
+      if (done === total) callback(priceMap);
+      return;
+    }
+
+    var cbName = '_hpCb_' + code + '_' + Date.now();
+    var timedOut = false;
+    var scriptEl = null;
+
+    window[cbName] = function(data) {
+      if (timedOut) return;
+      clearTimeout(tid);
+      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+      try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+
+      if (data && data.data && data.data.f43 !== undefined && data.data.f43 !== '-') {
+        var price = parseFloat(data.data.f43) / 1000;
+        if (!isNaN(price) && price > 0) {
+          _hpPriceCache[code] = { price: price, time: Date.now() };
+          priceMap[code] = { price: price };
+        }
+      }
+      done++;
+      if (done === total) callback(priceMap);
+    };
+
+    var market = (code.startsWith('6') || code.startsWith('5')) ? 1 : 0;
+    var secid = market + '.' + code;
+    var url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + secid + '&fields=f43&cb=' + cbName;
+
+    scriptEl = document.createElement('script');
+    scriptEl.src = url;
+    var tid = setTimeout(function() {
+      timedOut = true;
+      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+      try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+      done++;
+      if (done === total) callback(priceMap);
+    }, 8000);
+    document.head.appendChild(scriptEl);
+  });
+}
+
+function refreshHoldingPanel() {
+  _hpPriceCache = {};
+  renderHoldingPanel();
 }
 
 // ========== 持仓快速选择 ==========
@@ -1966,6 +2170,7 @@ function refreshFloatProfit() {
 
 // ========== 初始化 ==========
 function refreshAll() {
+  if (document.getElementById('tab-holdings').classList.contains('active')) renderHoldingPanel();
   if (document.getElementById('tab-records').classList.contains('active')) renderRecords();
   if (document.getElementById('tab-stats').classList.contains('active')) renderStats();
 }
