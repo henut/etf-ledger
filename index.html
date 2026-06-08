@@ -183,7 +183,10 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
 .hp-neg { color: #2E7D32; }
 .hp-zero { color: #999; }
 
-
+/* 交易记录筛选芯片 */
+.rec-filter-chip { display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #e0e0e0;border-radius:14px;font-size:12px;background:#fff;cursor:pointer;user-select:none;transition:background 0.15s,border-color 0.15s; }
+.rec-filter-chip:hover { background:#FFF5F5;border-color:#FFCDD2; }
+.rec-filter-chip input[type=checkbox] { accent-color:#E4393C;width:12px;height:12px; }
 
 @media (max-width: 600px) {
   .form-grid { grid-template-columns: 1fr; }
@@ -211,8 +214,8 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
 <div class="tab-bar">
   <button class="active" onclick="switchTab(event,'buy')">买入</button>
   <button onclick="switchTab(event,'sell')">卖出</button>
-  <button onclick="switchTab(event,'holdings')">持仓</button>
   <button onclick="switchTab(event,'records')">交易记录</button>
+  <button onclick="switchTab(event,'holdings')">持仓</button>
   <button onclick="switchTab(event,'stats')">盈亏统计</button>
 </div>
 
@@ -281,7 +284,65 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
   <!-- 交易记录Tab -->
   <div id="tab-records" class="tab-content">
     <div class="card">
-      <h3 style="margin-bottom:14px;">交易记录</h3>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;">交易记录</h3>
+        <span id="records-count" style="font-size:12px;color:#999;"></span>
+      </div>
+      <!-- 搜索栏 -->
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+        <div style="position:relative;flex:1;min-width:160px;">
+          <input id="rec-search" type="text" placeholder="搜索代码/名称/备注…" oninput="applyRecordsFilter()"
+            style="width:100%;box-sizing:border-box;padding:7px 32px 7px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;outline:none;">
+          <span onclick="document.getElementById('rec-search').value='';applyRecordsFilter();"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#bbb;cursor:pointer;font-size:16px;line-height:1;">×</span>
+        </div>
+        <button onclick="toggleRecordsFilter()" id="rec-filter-toggle"
+          style="padding:7px 14px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;font-size:13px;cursor:pointer;white-space:nowrap;color:#555;">
+          ▼ 筛选
+        </button>
+        <button onclick="resetRecordsFilter()"
+          style="padding:7px 12px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;font-size:12px;cursor:pointer;color:#E4393C;white-space:nowrap;">
+          重置
+        </button>
+      </div>
+      <!-- 筛选面板（Excel风格下拉） -->
+      <div id="rec-filter-panel" style="display:none;background:#fafafa;border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <!-- 类型筛选 -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">类型</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <label class="rec-filter-chip"><input type="checkbox" value="buy" onchange="applyRecordsFilter()" checked> 买入</label>
+              <label class="rec-filter-chip"><input type="checkbox" value="sell" onchange="applyRecordsFilter()" checked> 卖出</label>
+            </div>
+          </div>
+          <!-- 代码筛选（多选） -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">ETF代码</div>
+            <div id="rec-filter-codes" style="display:flex;gap:6px;flex-wrap:wrap;max-height:80px;overflow-y:auto;"></div>
+          </div>
+          <!-- 日期范围 -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">日期范围</div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="date" id="rec-date-from" onchange="applyRecordsFilter()"
+                style="flex:1;padding:5px 6px;border:1px solid #e0e0e0;border-radius:6px;font-size:12px;">
+              <span style="color:#bbb;font-size:12px;">至</span>
+              <input type="date" id="rec-date-to" onchange="applyRecordsFilter()"
+                style="flex:1;padding:5px 6px;border:1px solid #e0e0e0;border-radius:6px;font-size:12px;">
+            </div>
+          </div>
+          <!-- 状态筛选 -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">状态（卖出）</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <label class="rec-filter-chip"><input type="checkbox" value="linked" id="fc-linked" onchange="applyRecordsFilter()" checked> 已关联</label>
+              <label class="rec-filter-chip"><input type="checkbox" value="unlinked" id="fc-unlinked" onchange="applyRecordsFilter()" checked> 待关联</label>
+              <label class="rec-filter-chip"><input type="checkbox" value="buy_all" id="fc-buyall" onchange="applyRecordsFilter()" checked> 买入记录</label>
+            </div>
+          </div>
+        </div>
+      </div>
       <div id="records-container"></div>
     </div>
   </div>
@@ -1533,7 +1594,7 @@ function closeBuyOverlay() {
 // ========== Tab 切换（修复全局 event 依赖问题） ==========
 function switchTab(evt, tab) {
   var buttons = document.querySelectorAll('.tab-bar button');
-  var tabNames = ['buy', 'sell', 'holdings', 'records', 'stats'];
+  var tabNames = ['buy', 'sell', 'records', 'holdings', 'stats'];
   buttons.forEach(function(b) { b.classList.remove('active'); });
   document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
   if (evt && evt.target) evt.target.classList.add('active');
@@ -1548,7 +1609,7 @@ function switchTab(evt, tab) {
 // 内部调用（编辑跳转）
 function switchTabDirect(tab) {
   var buttons = document.querySelectorAll('.tab-bar button');
-  var tabNames = ['buy', 'sell', 'holdings', 'records', 'stats'];
+  var tabNames = ['buy', 'sell', 'records', 'holdings', 'stats'];
   buttons.forEach(function(b, i) { b.classList.toggle('active', tabNames[i] === tab); });
   document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
   document.getElementById('tab-' + tab).classList.add('active');
@@ -1760,22 +1821,135 @@ function selectHolding(code, name) {
 }
 
 // ========== 渲染交易记录 ==========
+// ========== 交易记录 搜索+筛选 ==========
+var _recFilterVisible = false;
+
+function toggleRecordsFilter() {
+  _recFilterVisible = !_recFilterVisible;
+  var panel = document.getElementById('rec-filter-panel');
+  var btn = document.getElementById('rec-filter-toggle');
+  panel.style.display = _recFilterVisible ? 'block' : 'none';
+  btn.textContent = (_recFilterVisible ? '▲' : '▼') + ' 筛选';
+  if (_recFilterVisible) buildCodeFilterChips();
+}
+
+function buildCodeFilterChips() {
+  var records = loadRecords();
+  var codes = {};
+  records.forEach(function(r) { codes[r.code] = r.name || r.code; });
+  var container = document.getElementById('rec-filter-codes');
+  if (!container) return;
+  // 只在首次（容器为空时）构建
+  if (container.children.length > 0) return;
+  var html = '';
+  Object.keys(codes).sort().forEach(function(code) {
+    html += '<label class="rec-filter-chip"><input type="checkbox" value="' + code + '" onchange="applyRecordsFilter()" checked> ' + code + '</label>';
+  });
+  if (!html) html = '<span style="font-size:12px;color:#bbb;">无数据</span>';
+  container.innerHTML = html;
+}
+
+function resetRecordsFilter() {
+  document.getElementById('rec-search').value = '';
+  document.getElementById('rec-date-from').value = '';
+  document.getElementById('rec-date-to').value = '';
+  // 重置所有 checkbox
+  var panel = document.getElementById('rec-filter-panel');
+  panel.querySelectorAll('input[type=checkbox]').forEach(function(cb) { cb.checked = true; });
+  applyRecordsFilter();
+}
+
+function getRecordsFilterState() {
+  var keyword = (document.getElementById('rec-search').value || '').trim().toLowerCase();
+  var dateFrom = document.getElementById('rec-date-from').value || '';
+  var dateTo = document.getElementById('rec-date-to').value || '';
+
+  // 类型勾选
+  var typeChecks = document.querySelectorAll('#rec-filter-panel input[type=checkbox][value=buy], #rec-filter-panel input[type=checkbox][value=sell]');
+  var allowedTypes = [];
+  typeChecks.forEach(function(cb) { if (cb.checked) allowedTypes.push(cb.value); });
+
+  // 代码勾选
+  var codeChecks = document.querySelectorAll('#rec-filter-codes input[type=checkbox]');
+  var allowedCodes = null; // null = 未初始化（全选）
+  if (codeChecks.length > 0) {
+    allowedCodes = [];
+    codeChecks.forEach(function(cb) { if (cb.checked) allowedCodes.push(cb.value); });
+  }
+
+  // 状态
+  var fcLinked = document.getElementById('fc-linked');
+  var fcUnlinked = document.getElementById('fc-unlinked');
+  var fcBuyall = document.getElementById('fc-buyall');
+
+  return {
+    keyword: keyword,
+    dateFrom: dateFrom,
+    dateTo: dateTo,
+    allowedTypes: allowedTypes,
+    allowedCodes: allowedCodes,
+    showLinked: fcLinked ? fcLinked.checked : true,
+    showUnlinked: fcUnlinked ? fcUnlinked.checked : true,
+    showBuyAll: fcBuyall ? fcBuyall.checked : true
+  };
+}
+
+function applyRecordsFilter() {
+  renderRecords();
+}
+
 function renderRecords() {
   var records = loadRecords();
   var container = document.getElementById('records-container');
 
   if (records.length === 0) {
     container.innerHTML = '<div class="empty-state">暂无交易记录</div>';
+    document.getElementById('records-count').textContent = '';
     return;
   }
+
+  var f = getRecordsFilterState();
 
   var sorted = records.slice().sort(function(a, b) {
     return (a.date || '0') < (b.date || '0') ? 1 : -1;
   });
 
+  // 应用筛选
+  var filtered = sorted.filter(function(rec) {
+    // 关键词
+    if (f.keyword) {
+      var haystack = ((rec.code || '') + ' ' + (rec.name || '') + ' ' + (rec.note || '')).toLowerCase();
+      if (haystack.indexOf(f.keyword) === -1) return false;
+    }
+    // 类型
+    if (f.allowedTypes.indexOf(rec.type) === -1) return false;
+    // 代码
+    if (f.allowedCodes !== null && f.allowedCodes.indexOf(rec.code) === -1) return false;
+    // 日期范围
+    if (f.dateFrom && rec.date && rec.date < f.dateFrom) return false;
+    if (f.dateTo && rec.date && rec.date > f.dateTo) return false;
+    // 状态（仅 sell）
+    if (rec.type === 'sell') {
+      var isLinked = rec.linkedBuys && rec.linkedBuys.length > 0;
+      if (isLinked && !f.showLinked) return false;
+      if (!isLinked && !f.showUnlinked) return false;
+    }
+    if (rec.type === 'buy' && !f.showBuyAll) return false;
+    return true;
+  });
+
+  // 更新计数
+  var countEl = document.getElementById('records-count');
+  if (countEl) countEl.textContent = filtered.length + ' / ' + sorted.length + ' 条';
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="color:#bbb;padding:40px 0;text-align:center;">未找到匹配记录</div>';
+    return;
+  }
+
   var html = '<table><thead><tr><th>日期</th><th>类型</th><th>代码</th><th>名称</th><th>价格</th><th>数量</th><th>金额</th><th>手续费</th><th>备注</th><th>状态</th><th>操作</th></tr></thead><tbody>';
 
-  sorted.forEach(function(rec) {
+  filtered.forEach(function(rec) {
     var typeTag = rec.type === 'buy'
       ? '<span class="tag tag-buy">买入</span>'
       : '<span class="tag tag-sell">卖出</span>';
@@ -1899,11 +2073,8 @@ function renderStats() {
   }
 
   var cardsHtml = '';
-  cardsHtml += '<div class="stats-card"><div class="label">总买入金额</div><div class="value">' + totalBuyAmount.toFixed(2) + '</div></div>';
-  cardsHtml += '<div class="stats-card"><div class="label">总卖出金额</div><div class="value">' + totalSellAmount.toFixed(2) + '</div></div>';
   cardsHtml += '<div class="stats-card"><div class="label">总手续费</div><div class="value">' + (totalBuyFee + totalSellFee).toFixed(2) + '</div></div>';
-  cardsHtml += '<div class="stats-card"><div class="label">已实现盈亏</div><div class="value ' + (totalRealizedProfit >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (totalRealizedProfit >= 0 ? '+' : '') + totalRealizedProfit.toFixed(2) + '</div></div>';
-  cardsHtml += '<div class="stats-card"><div class="label">实际收益率</div><div class="value-sm ' + (totalActualRate >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (totalActualRate >= 0 ? '+' : '') + totalActualRate.toFixed(2) + '%</div></div>';
+  cardsHtml += '<div class="stats-card"><div class="label">已实现盈亏</div><div class="value ' + (totalRealizedProfit >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (totalRealizedProfit >= 0 ? '+' : '') + totalRealizedProfit.toFixed(2) + '</div><div style="font-size:12px;margin-top:4px;font-weight:600;' + (totalActualRate >= 0 ? 'color:#E4393C;' : 'color:#2E7D32;') + '">' + (totalActualRate >= 0 ? '+' : '') + totalActualRate.toFixed(2) + '%</div></div>';
   cardsHtml += '<div class="stats-card"><div class="label">' + annualizedLabel + '</div><div class="value-sm ' + (totalAnnualizedRate >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (totalAnnualizedRate >= 0 ? '+' : '') + totalAnnualizedRate.toFixed(2) + '%</div></div>';
   cardsHtml += '<div class="stats-card" id="card-float-total"><div class="label">浮动盈亏</div><div class="value-sm floating-loading" id="float-total-val">获取中…</div></div>';
   document.getElementById('stats-cards').innerHTML = cardsHtml;
