@@ -1,0 +1,2465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ETF记账">
+<meta name="theme-color" content="#E4393C">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>ETF交易记账</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f5; color: #333; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #E4393C 0%, #C1272D 100%); color: #fff; padding: 16px 24px 12px; text-align: center; }
+.header h1 { font-size: 22px; font-weight: 600; letter-spacing: 1px; }
+.header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+.header-actions { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
+.btn-header { background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.4); padding: 5px 14px; border-radius: 16px; font-size: 12px; cursor: pointer; transition: background 0.2s; }
+.btn-header:hover { background: rgba(255,255,255,0.35); }
+
+.tab-bar { display: flex; background: #fff; border-bottom: 1px solid #e8e8e8; position: sticky; top: 0; z-index: 100; }
+.tab-bar button { flex: 1; padding: 14px 8px; border: none; background: none; font-size: 14px; color: #666; cursor: pointer; position: relative; transition: color 0.2s; }
+.tab-bar button.active { color: #E4393C; font-weight: 600; }
+.tab-bar button.active::after { content: ''; position: absolute; bottom: 0; left: 20%; right: 20%; height: 3px; background: #E4393C; border-radius: 2px 2px 0 0; }
+
+.container { max-width: 800px; margin: 0 auto; padding: 16px; }
+.card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+label { display: block; font-size: 13px; color: #888; margin-bottom: 4px; font-weight: 500; }
+input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; background: #fafafa; }
+input:focus, select:focus, textarea:focus { border-color: #E4393C; background: #fff; }
+textarea { resize: vertical; min-height: 60px; }
+
+.btn { display: inline-block; padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+.btn-primary { background: #E4393C; color: #fff; }
+.btn-primary:hover { background: #C1272D; }
+.btn-outline { background: #fff; color: #E4393C; border: 1px solid #E4393C; }
+.btn-outline:hover { background: #FFF0F0; }
+.btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+.btn-ghost { background: none; border: 1px solid #ddd; color: #666; }
+.btn-ghost:hover { background: #f5f5f5; }
+.btn-danger { background: #fff; color: #E4393C; border: 1px solid #E4393C; }
+.btn-danger:hover { background: #FFF0F0; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-space: nowrap; }
+
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.tag-buy { background: #E8F5E9; color: #2E7D32; }
+.tag-sell { background: #FFF3E0; color: #E65100; }
+.tag-warn { background: #FFF3E0; color: #E65100; }
+.tag-linked { background: #E8F5E9; color: #2E7D32; }
+
+.profit-positive { color: #E4393C; font-weight: 600; }
+.profit-negative { color: #2E7D32; font-weight: 600; }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.overlay-content { background: #fff; border-radius: 16px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; padding: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); }
+.overlay-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+.overlay-close { width: 32px; height: 32px; border-radius: 50%; border: none; background: #f0f0f0; cursor: pointer; font-size: 16px; line-height: 32px; text-align: center; color: #666; }
+.overlay-close:hover { background: #e0e0e0; }
+
+.batch-item { background: #f8f8f8; border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+.batch-info { margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: #555; }
+.batch-info span { white-space: nowrap; }
+.batch-info .highlight { color: #333; font-weight: 500; }
+.batch-row { display: flex; align-items: center; gap: 10px; }
+.batch-row input { width: 100px; }
+
+.summary-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid #eee; margin-top: 12px; font-size: 14px; }
+.summary-bar strong { font-size: 16px; }
+
+.stats-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stats-card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: center; }
+.stats-card .label { font-size: 12px; color: #999; margin-bottom: 6px; }
+.stats-card .value { font-size: 20px; font-weight: 700; }
+.stats-card .value-sm { font-size: 16px; font-weight: 700; }
+
+.etf-group { margin-bottom: 20px; }
+.etf-group h3 { font-size: 15px; color: #E4393C; margin-bottom: 8px; }
+
+/* 浮盈展示行 */
+.floating-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 10px; background: #f8f8f8; border-radius: 8px; margin-top: 8px; font-size: 13px; color: #666; }
+.floating-row .fp-label { color: #888; white-space: nowrap; }
+.floating-row .fp-val { font-weight: 600; white-space: nowrap; }
+.floating-loading { font-size: 12px; color: #bbb; font-style: italic; }
+
+.hidden { display: none !important; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.empty-state { text-align: center; padding: 40px 20px; color: #bbb; font-size: 14px; }
+
+.holdings-area { margin-bottom: 14px; }
+.holdings-area .holdings-title { font-size: 13px; color: #888; margin-bottom: 6px; font-weight: 500; }
+.holdings-area .holdings-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.holdings-area .holdings-empty { font-size: 13px; color: #ccc; padding: 4px 0; }
+.holding-tag { display: inline-block; padding: 5px 12px; background: #f5f5f5; border: 1px solid #e8e8e8; border-radius: 16px; font-size: 12px; color: #555; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.holding-tag:hover { background: #FFF0F0; border-color: #E4393C; color: #E4393C; }
+
+.name-loading::placeholder { color: #bbb; font-style: italic; }
+
+.price-hint { font-size: 11px; color: #2E7D32; font-weight: 400; margin-left: 4px; transition: opacity 0.3s; }
+
+.tag-blue { background: #E3F2FD; color: #1565C0; cursor: pointer; }
+.tag-blue:hover { background: #BBDEFB; }
+
+.buy-link-info { background: #f8f8f8; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+.buy-link-info .info-row { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: #555; }
+.buy-link-info .info-row span { white-space: nowrap; }
+.buy-link-info .info-row .hl { color: #333; font-weight: 500; }
+
+.link-sell-item { background: #FFF8E1; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+.link-sell-item .sell-row { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: #555; align-items: center; }
+
+.fee-hint { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+.alert { padding: 10px 16px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+.alert-warn { background: #FFF8E1; color: #F57F17; border: 1px solid #FFE082; }
+
+.fee-card h3 { margin-bottom: 10px; }
+.fee-row { display: flex; align-items: center; gap: 16px; font-size: 13px; flex-wrap: wrap; }
+.fee-row label { margin-bottom: 0; white-space: nowrap; color: #888; font-size: 12px; }
+.fee-row input { width: 100px; padding: 8px 10px; font-size: 13px; }
+.fee-row .fee-sep { color: #ccc; margin: 0 4px; }
+
+/* 刷新浮盈按钮 */
+.refresh-btn { background: none; border: 1px solid #E4393C; color: #E4393C; border-radius: 14px; padding: 3px 12px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+.refresh-btn:hover { background: #FFF0F0; }
+
+/* 云同步 */
+.sync-status { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; }
+.sync-status.synced { color: rgba(255,255,255,0.9); }
+.sync-status.sync-error { color: #FFD54F; }
+.sync-settings-group { margin-bottom: 14px; }
+.sync-settings-group label { font-size: 13px; color: #888; margin-bottom: 4px; display: block; }
+.sync-settings-group input { background: #fafafa; }
+.sync-settings-group .hint { font-size: 11px; color: #bbb; margin-top: 3px; }
+.sync-btn-row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.sync-info-row { display: flex; gap: 12px; font-size: 12px; color: #888; margin-top: 10px; flex-wrap: wrap; }
+.sync-info-row span { white-space: nowrap; }
+
+/* 持仓面板 */
+.hp-summary { background: linear-gradient(135deg, #E4393C 0%, #C62828 100%); color: #fff; border-radius: 0 0 18px 18px; padding: 16px 16px 20px; margin: -10px -10px 12px; }
+.hp-summary .hp-row1 { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.hp-summary .hp-title { font-size: 13px; opacity: 0.85; margin-bottom: 4px; }
+.hp-summary .hp-big { font-size: 24px; font-weight: 700; letter-spacing: 0.5px; }
+.hp-summary .hp-pct { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+.hp-summary .hp-row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 12px; }
+.hp-summary .hp-item .hp-lbl { font-size: 11px; opacity: 0.75; margin-bottom: 3px; }
+.hp-summary .hp-item .hp-val { font-size: 14px; font-weight: 600; }
+.hp-stock-list { }
+.hp-stock-header { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 6px 12px; font-size: 11px; color: #999; border-bottom: 1px solid #f0f0f0; background: #fafafa; border-radius: 8px 8px 0 0; }
+.hp-stock-header span:last-child, .hp-stock-row .hp-col-right { text-align: right; }
+.hp-stock-header span:nth-child(2), .hp-stock-row .hp-col-mid1 { text-align: right; }
+.hp-stock-header span:nth-child(3), .hp-stock-row .hp-col-mid2 { text-align: right; }
+.hp-stock-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 12px 12px; border-bottom: 1px solid #f8f8f8; cursor: pointer; transition: background 0.15s; }
+.hp-stock-row:hover { background: #FFF5F5; }
+.hp-stock-row:last-child { border-bottom: none; }
+.hp-stock-row.hp-expanded { background: #FFF8F8; border-bottom: none; }
+.hp-stock-row .hp-name { font-size: 14px; font-weight: 600; color: #E4393C; line-height: 1.3; }
+.hp-stock-row .hp-code { font-size: 11px; color: #999; margin-top: 2px; }
+.hp-stock-row .hp-expand-icon { display: inline-block; font-size: 10px; color: #ccc; margin-left: 4px; transition: transform 0.2s; }
+.hp-stock-row.hp-expanded .hp-expand-icon { transform: rotate(90deg); }
+.hp-stock-row .hp-mktval { font-size: 14px; font-weight: 600; color: #333; text-align: right; }
+.hp-stock-row .hp-mktval-sub { font-size: 11px; color: #999; text-align: right; margin-top: 2px; }
+.hp-stock-row .hp-pnl { font-size: 14px; font-weight: 600; text-align: right; }
+.hp-stock-row .hp-pnl-pct { font-size: 11px; text-align: right; margin-top: 2px; }
+.hp-stock-row .hp-qty { font-size: 13px; text-align: right; color: #333; line-height: 1.3; }
+.hp-stock-row .hp-qty-avail { font-size: 11px; color: #999; text-align: right; margin-top: 2px; }
+.hp-stock-row .hp-cost { font-size: 13px; text-align: right; color: #333; }
+.hp-stock-row .hp-nowprice { font-size: 11px; color: #999; text-align: right; margin-top: 2px; }
+/* 批次明细行 */
+.hp-batch-group { background: #FAFAFA; border-bottom: 1px solid #f0f0f0; }
+.hp-batch-header { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 5px 12px; font-size: 10px; color: #bbb; border-bottom: 1px solid #f0f0f0; }
+.hp-batch-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 8px 12px; font-size: 12px; border-bottom: 1px solid #f4f4f4; }
+.hp-batch-row:last-child { border-bottom: none; }
+.hp-batch-row .hp-b-date { color: #777; }
+.hp-batch-row .hp-b-qty { text-align: right; color: #333; }
+.hp-batch-row .hp-b-cost { text-align: right; color: #555; }
+.hp-batch-row .hp-b-price { text-align: right; color: #333; font-weight: 500; }
+.hp-loading { font-size: 12px; color: #bbb; font-style: italic; }
+.hp-refresh-bar { display: flex; justify-content: flex-end; align-items: center; padding: 8px 12px 4px; gap: 8px; }
+.hp-last-update { font-size: 11px; color: #bbb; }
+.hp-empty { text-align: center; padding: 60px 20px; color: #ccc; font-size: 14px; }
+
+/* 持仓面板 正/负色 */
+.hp-pos { color: #E4393C; }
+.hp-neg { color: #2E7D32; }
+.hp-zero { color: #999; }
+
+/* 交易记录筛选芯片 */
+.rec-filter-chip { display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #e0e0e0;border-radius:14px;font-size:12px;background:#fff;cursor:pointer;user-select:none;transition:background 0.15s,border-color 0.15s; }
+.rec-filter-chip:hover { background:#FFF5F5;border-color:#FFCDD2; }
+.rec-filter-chip input[type=checkbox] { accent-color:#E4393C;width:12px;height:12px; }
+
+@media (max-width: 600px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .container { padding: 10px; }
+  .card { padding: 14px; }
+  table { font-size: 11px; }
+  th, td { padding: 6px 4px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>ETF 交易记账</h1>
+  <p id="header-subtitle">费率 万0.5 · 最低 0.1 元</p>
+  <div class="header-actions">
+    <button class="btn-header" onclick="exportData()">&#8595; 导出备份</button>
+    <button class="btn-header" onclick="triggerImport()">&#8593; 导入数据</button>
+    <button class="btn-header" onclick="openSyncPanel()">&#9729; 云同步</button>
+    <input id="import-file-input" type="file" accept=".json" style="display:none;" onchange="importData(event)">
+  </div>
+  <div class="sync-status" id="sync-status"></div>
+</div>
+
+<div class="tab-bar">
+  <button class="active" onclick="switchTab(event,'buy')">买入</button>
+  <button onclick="switchTab(event,'sell')">卖出</button>
+  <button onclick="switchTab(event,'records')">交易记录</button>
+  <button onclick="switchTab(event,'holdings')">持仓</button>
+  <button onclick="switchTab(event,'stats')">盈亏统计</button>
+</div>
+
+<div class="container">
+
+  <!-- 费率设置（共用） -->
+  <div class="card fee-card">
+    <h3>费率设置</h3>
+    <div class="fee-row" id="fee-config-panel">
+      <label>费率(万分之)</label>
+      <input id="fee-rate" type="number" step="0.01" min="0.01" value="0.5" onchange="onFeeConfigChange()">
+      <span class="fee-sep">|</span>
+      <label>最低手续费(元)</label>
+      <input id="fee-min" type="number" step="0.01" min="0" value="0.1" onchange="onFeeConfigChange()">
+    </div>
+  </div>
+
+  <!-- 买入Tab -->
+  <div id="tab-buy" class="tab-content active">
+    <div class="card">
+      <h3 style="margin-bottom:14px;">记录买入</h3>
+      <div class="form-grid">
+        <div><label>ETF 代码</label><input id="buy-code" placeholder="如 510050" oninput="onCodeInput('buy')" onblur="autoFillName('buy')"></div>
+        <div><label>ETF 名称</label><input id="buy-name" placeholder="输入代码自动填充"></div>
+        <div><label>买入价格 <span id="buy-price-hint" class="price-hint"></span></label><input id="buy-price" type="number" step="0.001" placeholder="0.000" oninput="calcBuy()"></div>
+        <div><label>买入数量</label><input id="buy-qty" type="number" step="1" placeholder="0" oninput="calcBuy()"></div>
+        <div><label>买入金额</label><input id="buy-amount" type="number" step="0.01" placeholder="自动计算" oninput="calcBuyFromAmount()"></div>
+        <div><label>手续费</label><input id="buy-fee" type="number" step="0.01" placeholder="自动计算" readonly style="color:#E4393C;"></div>
+        <div><label>日期</label><input id="buy-date" type="date"></div>
+        <div class="full"><label>备注</label><input id="buy-note" placeholder="可选"></div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="saveBuy()">保存买入</button>
+      </div>
+      <div id="buy-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  </div>
+
+  <!-- 卖出Tab -->
+  <div id="tab-sell" class="tab-content">
+    <div class="card">
+      <h3 style="margin-bottom:14px;">记录卖出</h3>
+      <div class="holdings-area" id="sell-holdings"></div>
+      <div class="form-grid">
+        <div><label>ETF 代码</label><input id="sell-code" placeholder="如 510050" oninput="onCodeInput('sell')" onblur="autoFillName('sell')"></div>
+        <div><label>ETF 名称</label><input id="sell-name" placeholder="输入代码自动填充"></div>
+        <div><label>卖出价格 <span id="sell-price-hint" class="price-hint"></span></label><input id="sell-price" type="number" step="0.001" placeholder="0.000" oninput="calcSell()"></div>
+        <div><label>卖出数量</label><input id="sell-qty" type="number" step="1" placeholder="0" oninput="calcSell()"></div>
+        <div><label>卖出金额</label><input id="sell-amount" type="number" step="0.01" placeholder="自动计算" oninput="calcSellFromAmount()"></div>
+        <div><label>手续费</label><input id="sell-fee" type="number" step="0.01" placeholder="自动计算" readonly style="color:#E4393C;"></div>
+        <div><label>日期</label><input id="sell-date" type="date"></div>
+        <div class="full"><label>备注</label><input id="sell-note" placeholder="可选"></div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="saveSell()">保存卖出</button>
+      </div>
+      <div id="sell-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  </div>
+
+  <!-- 持仓Tab -->
+  <div id="tab-holdings" class="tab-content">
+    <div id="holdings-panel-container"></div>
+  </div>
+
+  <!-- 交易记录Tab -->
+  <div id="tab-records" class="tab-content">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;">交易记录</h3>
+        <span id="records-count" style="font-size:12px;color:#999;"></span>
+      </div>
+      <!-- 搜索栏 -->
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+        <div style="position:relative;flex:1;min-width:160px;">
+          <input id="rec-search" type="text" placeholder="搜索代码/名称/备注…" oninput="applyRecordsFilter()"
+            style="width:100%;box-sizing:border-box;padding:7px 32px 7px 10px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;outline:none;">
+          <span onclick="document.getElementById('rec-search').value='';applyRecordsFilter();"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#bbb;cursor:pointer;font-size:16px;line-height:1;">×</span>
+        </div>
+        <button onclick="toggleRecordsFilter()" id="rec-filter-toggle"
+          style="padding:7px 14px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;font-size:13px;cursor:pointer;white-space:nowrap;color:#555;">
+          ▼ 筛选
+        </button>
+        <button onclick="resetRecordsFilter()"
+          style="padding:7px 12px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;font-size:12px;cursor:pointer;color:#E4393C;white-space:nowrap;">
+          重置
+        </button>
+      </div>
+      <!-- 筛选面板（Excel风格下拉） -->
+      <div id="rec-filter-panel" style="display:none;background:#fafafa;border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <!-- 类型筛选 -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">类型</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <label class="rec-filter-chip"><input type="checkbox" value="buy" onchange="applyRecordsFilter()" checked> 买入</label>
+              <label class="rec-filter-chip"><input type="checkbox" value="sell" onchange="applyRecordsFilter()" checked> 卖出</label>
+            </div>
+          </div>
+          <!-- 代码筛选（多选） -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">ETF代码</div>
+            <div id="rec-filter-codes" style="display:flex;gap:6px;flex-wrap:wrap;max-height:80px;overflow-y:auto;"></div>
+          </div>
+          <!-- 日期范围 -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">日期范围</div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="date" id="rec-date-from" onchange="applyRecordsFilter()"
+                style="flex:1;padding:5px 6px;border:1px solid #e0e0e0;border-radius:6px;font-size:12px;">
+              <span style="color:#bbb;font-size:12px;">至</span>
+              <input type="date" id="rec-date-to" onchange="applyRecordsFilter()"
+                style="flex:1;padding:5px 6px;border:1px solid #e0e0e0;border-radius:6px;font-size:12px;">
+            </div>
+          </div>
+          <!-- 状态筛选 -->
+          <div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;font-weight:600;">状态（卖出）</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <label class="rec-filter-chip"><input type="checkbox" value="linked" id="fc-linked" onchange="applyRecordsFilter()" checked> 已关联</label>
+              <label class="rec-filter-chip"><input type="checkbox" value="unlinked" id="fc-unlinked" onchange="applyRecordsFilter()" checked> 待关联</label>
+              <label class="rec-filter-chip"><input type="checkbox" value="buy_all" id="fc-buyall" onchange="applyRecordsFilter()" checked> 买入记录</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="records-container"></div>
+    </div>
+  </div>
+
+  <!-- 盈亏统计Tab -->
+  <div id="tab-stats" class="tab-content">
+    <div class="stats-cards" id="stats-cards"></div>
+    <div class="card" id="etf-stats-container"></div>
+  </div>
+
+</div>
+
+<!-- Toast 提示 -->
+<div class="toast" id="toast"></div>
+
+<!-- 关联弹窗 -->
+<div class="overlay hidden" id="link-overlay">
+  <div class="overlay-content" id="link-content"></div>
+</div>
+
+<!-- 云同步弹窗 -->
+<div class="overlay hidden" id="sync-overlay">
+  <div class="overlay-content">
+    <div class="overlay-title">
+      <span>&#9729; 云同步设置</span>
+      <button class="overlay-close" onclick="closeSyncPanel()">&times;</button>
+    </div>
+    <div class="sync-settings-group">
+      <label>GitHub Personal Access Token</label>
+      <input id="sync-token" type="password" placeholder="ghp_xxxxxxxxxxxx">
+      <div class="hint">需要 gist 权限。前往 <a href="https://github.com/settings/tokens/new" target="_blank" style="color:#E4393C;">创建 Token</a>，勾选 gist 范围</div>
+    </div>
+    <div class="sync-settings-group">
+      <label>Gist ID（首次留空，自动创建）</label>
+      <input id="sync-gist-id" type="text" placeholder="留空自动创建，或填已有 Gist ID">
+      <div class="hint">首次使用直接留空即可；多设备同步时，在第二台设备填入同一个 Gist ID</div>
+    </div>
+    <div class="sync-btn-row">
+      <button class="btn btn-primary" onclick="cloudPush()">&#9650; 推送到云端</button>
+      <button class="btn btn-outline" onclick="cloudPull()">&#9660; 从云端拉取</button>
+      <button class="btn btn-ghost" onclick="saveSyncConfig()">保存设置</button>
+    </div>
+    <div class="sync-info-row" id="sync-info"></div>
+  </div>
+</div>
+
+<!-- 买入关联查询弹窗 -->
+<div class="overlay hidden" id="buy-link-overlay">
+  <div class="overlay-content" id="buy-link-content"></div>
+</div>
+
+<script>
+// ========== 数据层 ==========
+var STORAGE_KEY = 'etf_ledger_records';
+var MAP_KEY = 'etf_name_map';
+
+function loadRecords() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch(e) { return []; }
+}
+function saveRecords(records) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  autoSyncDebounced();
+}
+function loadNameMap() {
+  try { return JSON.parse(localStorage.getItem(MAP_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveNameMap(map) {
+  localStorage.setItem(MAP_KEY, JSON.stringify(map));
+}
+
+function genId() { return 'rec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
+
+function loadFeeConfig() {
+  try { return JSON.parse(localStorage.getItem('etf_fee_config')) || { rate: 0.5, minFee: 0.1 }; }
+  catch(e) { return { rate: 0.5, minFee: 0.1 }; }
+}
+function saveFeeConfig(cfg) {
+  localStorage.setItem('etf_fee_config', JSON.stringify(cfg));
+}
+function calcFee(amount) {
+  var cfg = loadFeeConfig();
+  var fee = amount * cfg.rate / 10000;
+  if (fee < cfg.minFee) fee = cfg.minFee;
+  return parseFloat(fee.toFixed(2));
+}
+function updateFeeDisplay() {
+  var cfg = loadFeeConfig();
+  var subtitle = document.getElementById('header-subtitle');
+  if (subtitle) subtitle.textContent = '费率 万' + cfg.rate + ' · 最低 ' + cfg.minFee + ' 元';
+  document.getElementById('fee-rate').value = cfg.rate;
+  document.getElementById('fee-min').value = cfg.minFee;
+  calcBuy();
+  calcSell();
+}
+function onFeeConfigChange() {
+  var rate = parseFloat(document.getElementById('fee-rate').value);
+  var minFee = parseFloat(document.getElementById('fee-min').value);
+  if (isNaN(rate) || rate <= 0) { updateFeeDisplay(); return; }
+  if (isNaN(minFee) || minFee < 0) { updateFeeDisplay(); return; }
+  saveFeeConfig({ rate: rate, minFee: minFee });
+  updateFeeDisplay();
+}
+
+// ========== 费率计算 ==========
+function calcBuy() {
+  var price = parseFloat(document.getElementById('buy-price').value) || 0;
+  var qty = parseInt(document.getElementById('buy-qty').value) || 0;
+  if (price > 0 && qty > 0) {
+    var amount = Math.round(price * qty * 100) / 100;
+    document.getElementById('buy-amount').value = amount;
+    document.getElementById('buy-fee').value = calcFee(amount).toFixed(2);
+  }
+}
+function calcBuyFromAmount() {
+  var amount = parseFloat(document.getElementById('buy-amount').value) || 0;
+  if (amount > 0) {
+    document.getElementById('buy-fee').value = calcFee(amount).toFixed(2);
+  }
+}
+function calcSell() {
+  var price = parseFloat(document.getElementById('sell-price').value) || 0;
+  var qty = parseInt(document.getElementById('sell-qty').value) || 0;
+  if (price > 0 && qty > 0) {
+    var amount = Math.round(price * qty * 100) / 100;
+    document.getElementById('sell-amount').value = amount;
+    document.getElementById('sell-fee').value = calcFee(amount).toFixed(2);
+  }
+}
+function calcSellFromAmount() {
+  var amount = parseFloat(document.getElementById('sell-amount').value) || 0;
+  if (amount > 0) {
+    document.getElementById('sell-fee').value = calcFee(amount).toFixed(2);
+  }
+}
+
+// ========== 内置ETF字典 ==========
+var BUILTIN_ETF_MAP = {
+  '510050': '上证50ETF',
+  '510300': '沪深300ETF',
+  '510500': '中证500ETF',
+  '510880': '红利ETF',
+  '510900': 'H股ETF',
+  '512880': '证券ETF',
+  '512800': '银行ETF',
+  '512100': '中证1000ETF',
+  '512010': '医药ETF',
+  '512660': '军工ETF',
+  '512690': '酒ETF',
+  '512980': '传媒ETF',
+  '513050': '中概互联ETF',
+  '513100': '纳指ETF',
+  '513500': '标普500ETF',
+  '515050': '5GETF',
+  '515790': '光伏ETF',
+  '515030': '新能源车ETF',
+  '515700': '新能车ETF',
+  '516160': '新能源ETF',
+  '516970': '基建ETF',
+  '518880': '黄金ETF',
+  '159915': '创业板ETF',
+  '159919': '沪深300ETF(深)',
+  '159922': '中证500ETF(深)',
+  '159928': '消费ETF',
+  '159949': '创业板50ETF',
+  '159995': '芯片ETF',
+  '159865': '养殖ETF',
+  '159766': '旅游ETF',
+  '159790': '碳中和ETF',
+  '159899': '软件ETF',
+  '159840': '锂电池ETF',
+  '159611': '电力ETF',
+  '588000': '科创50ETF',
+  '588050': '科创创业ETF',
+  '563300': '中证2000ETF',
+  '560010': '中证1000ETF(沪)',
+  '561910': '电池ETF',
+  '562800': '稀有金属ETF',
+  '563000': '中国A50ETF'
+};
+
+// ========== Toast 提示 ==========
+function showToast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(function() { el.classList.remove('show'); }, 2200);
+}
+
+// ========== GitHub Gist 云同步 ==========
+var SYNC_CONFIG_KEY = 'etf_sync_config';
+var _syncDebounceTimer = null;
+
+function loadSyncConfig() {
+  try { return JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+
+function saveSyncConfig() {
+  var cfg = {
+    token: document.getElementById('sync-token').value.trim(),
+    gistId: document.getElementById('sync-gist-id').value.trim()
+  };
+  localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
+  updateSyncStatusUI();
+  showToast('同步设置已保存');
+}
+
+function openSyncPanel() {
+  var cfg = loadSyncConfig();
+  document.getElementById('sync-token').value = cfg.token || '';
+  document.getElementById('sync-gist-id').value = cfg.gistId || '';
+  updateSyncInfo();
+  document.getElementById('sync-overlay').classList.remove('hidden');
+}
+
+function closeSyncPanel() {
+  document.getElementById('sync-overlay').classList.add('hidden');
+}
+
+function updateSyncInfo() {
+  var cfg = loadSyncConfig();
+  var infoEl = document.getElementById('sync-info');
+  var parts = [];
+  if (cfg.gistId) {
+    parts.push('<span style="font-weight:bold;">Gist ID: ' + cfg.gistId + '</span>');
+    parts.push('<a href="https://gist.github.com/' + cfg.gistId + '" target="_blank" style="color:#E4393C;">在 GitHub 查看</a>');
+    parts.push('<button onclick="navigator.clipboard.writeText(\'' + cfg.gistId + '\');showToast(\'已复制 Gist ID\')" style="background:none;border:1px solid #ccc;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">复制 ID</button>');
+  } else {
+    parts.push('<span style="color:#bbb;">未配置 Gist，首次推送将自动创建</span>');
+  }
+  infoEl.innerHTML = parts.join('&nbsp;&nbsp;');
+}
+
+function updateSyncStatusUI() {
+  var el = document.getElementById('sync-status');
+  var cfg = loadSyncConfig();
+  if (!cfg.token) {
+    el.textContent = '';
+    el.className = 'sync-status';
+    return;
+  }
+  var lastSync = cfg.lastSyncTime ? new Date(cfg.lastSyncTime) : null;
+  var timeStr = lastSync ? (lastSync.getMonth()+1) + '/' + lastSync.getDate() + ' ' + lastSync.getHours() + ':' + String(lastSync.getMinutes()).padStart(2,'0') : '从未';
+  // 计算下次同步时间
+  var lastMs = lastSync ? lastSync.getTime() : 0;
+  var elapsed = Date.now() - lastMs;
+  var remaining = SYNC_INTERVAL_MS - elapsed;
+  var nextStr = '';
+  if (remaining > 0 && cfg.gistId) {
+    var hrs = Math.floor(remaining / 3600000);
+    var mins = Math.floor((remaining % 3600000) / 60000);
+    nextStr = ' · 下次同步: ' + (hrs > 0 ? hrs + '时' : '') + mins + '分后';
+  }
+  el.textContent = '☁ 已连接 · 上次同步: ' + timeStr + nextStr;
+  el.className = 'sync-status synced';
+}
+
+function showSyncError(msg) {
+  var el = document.getElementById('sync-status');
+  el.textContent = '☁ 同步失败: ' + msg;
+  el.className = 'sync-status sync-error';
+}
+
+// 推送数据到 GitHub Gist
+function cloudPush() {
+  var cfg = loadSyncConfig();
+  if (!cfg.token) {
+    showToast('请先填写 GitHub Token');
+    return;
+  }
+
+  var data = {
+    version: 1,
+    exportTime: new Date().toISOString(),
+    records: loadRecords(),
+    nameMap: loadNameMap(),
+    feeConfig: loadFeeConfig()
+  };
+  var jsonStr = JSON.stringify(data);
+
+  var gistId = cfg.gistId;
+  var method = gistId ? 'PATCH' : 'POST';
+  var url = gistId
+    ? 'https://api.github.com/gists/' + gistId
+    : 'https://api.github.com/gists';
+
+  var body = {
+    description: 'ETF记账数据同步',
+    public: false,
+    files: {
+      'etf-ledger-sync.json': {
+        content: jsonStr
+      }
+    }
+  };
+
+  showToast('正在推送...');
+  fetch(url, {
+    method: method,
+    headers: {
+      'Authorization': 'token ' + cfg.token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/vnd.github.v3+json'
+    },
+    body: JSON.stringify(body)
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(function(result) {
+    // 保存 Gist ID（首次创建时）
+    if (!gistId && result.id) {
+      cfg.gistId = result.id;
+      localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
+      document.getElementById('sync-gist-id').value = result.id;
+      updateSyncInfo();
+      showToast('✓ 推送成功！Gist ID: ' + result.id);
+    } else {
+      showToast('✓ 推送成功！');
+    }
+    cfg.lastSyncTime = new Date().toISOString();
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
+    updateSyncStatusUI();
+  })
+  .catch(function(err) {
+    showSyncError(err.message);
+    showToast('推送失败: ' + err.message);
+  });
+}
+
+// 从 GitHub Gist 拉取数据
+function cloudPull() {
+  var cfg = loadSyncConfig();
+  if (!cfg.token) {
+    showToast('请先填写 GitHub Token');
+    return;
+  }
+  if (!cfg.gistId) {
+    showToast('请先推送一次以创建 Gist');
+    return;
+  }
+
+  showToast('正在拉取...');
+  fetch('https://api.github.com/gists/' + cfg.gistId, {
+    headers: {
+      'Authorization': 'token ' + cfg.token,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(function(gist) {
+    var file = gist.files && gist.files['etf-ledger-sync.json'];
+    if (!file || !file.content) throw new Error('Gist 中无同步数据');
+
+    var data = JSON.parse(file.content);
+    var records, nameMap, feeConfig;
+
+    if (Array.isArray(data)) {
+      records = data;
+      nameMap = {};
+      feeConfig = null;
+    } else {
+      records = data.records || [];
+      nameMap = data.nameMap || {};
+      feeConfig = data.feeConfig || null;
+    }
+
+    // 合并：本地有则保留，远程新增则追加
+    var existing = loadRecords();
+    var existingIds = new Set(existing.map(function(r){ return r.id; }));
+    var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
+    var mergedRecords = existing.concat(newRecords);
+
+    // 同步名称映射
+    var existingMap = loadNameMap();
+    Object.assign(existingMap, nameMap);
+
+    saveRecords(mergedRecords);
+    saveNameMap(existingMap);
+    if (feeConfig) saveFeeConfig(feeConfig);
+
+    updateFeeDisplay();
+    refreshAll();
+
+    cfg.lastSyncTime = new Date().toISOString();
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
+    updateSyncStatusUI();
+    showToast('✓ 拉取成功！新增 ' + newRecords.length + ' 条');
+  })
+  .catch(function(err) {
+    showSyncError(err.message);
+    showToast('拉取失败: ' + err.message);
+  });
+}
+
+// 数据变更后自动推送（防抖 5 秒，仅推送不拉取）
+function autoSyncDebounced() {
+  var cfg = loadSyncConfig();
+  if (!cfg.token) return;
+  clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(function() {
+    cloudPush();
+  }, 5000);
+}
+
+// 6 小时周期同步（拉取+推送）
+var SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6小时
+var _periodicSyncTimer = null;
+
+function periodicSync() {
+  var cfg = loadSyncConfig();
+  if (!cfg.token || !cfg.gistId) return;
+
+  // 先拉取云端数据合并，再推送本地最新
+  fetch('https://api.github.com/gists/' + cfg.gistId, {
+    headers: {
+      'Authorization': 'token ' + cfg.token,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  })
+  .then(function(res) { if (!res.ok) throw new Error(''); return res.json(); })
+  .then(function(gist) {
+    var file = gist.files && gist.files['etf-ledger-sync.json'];
+    if (!file || !file.content) { cloudPush(); return; }
+    var data = JSON.parse(file.content);
+    var records = Array.isArray(data) ? data : (data.records || []);
+    var existing = loadRecords();
+    var existingIds = new Set(existing.map(function(r){ return r.id; }));
+    var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
+
+    if (newRecords.length > 0) {
+      var mergedRecords = existing.concat(newRecords);
+      if (data.nameMap) {
+        var existingMap = loadNameMap();
+        Object.assign(existingMap, data.nameMap);
+        saveNameMap(existingMap);
+      }
+      if (data.feeConfig) saveFeeConfig(data.feeConfig);
+      saveRecords(mergedRecords);
+      updateFeeDisplay();
+      refreshAll();
+      showToast('☁ 自动同步：拉取 ' + newRecords.length + ' 条新数据');
+    }
+    // 拉取完成后推送本地最新
+    cloudPush();
+  })
+  .catch(function() {
+    // 拉取失败也尝试推送
+    cloudPush();
+  });
+}
+
+// 启动周期同步
+function startPeriodicSync() {
+  if (_periodicSyncTimer) clearInterval(_periodicSyncTimer);
+  var cfg = loadSyncConfig();
+  if (!cfg.token || !cfg.gistId) return;
+
+  // 首次：检查是否超过6小时未同步
+  var lastSync = cfg.lastSyncTime ? new Date(cfg.lastSyncTime).getTime() : 0;
+  var elapsed = Date.now() - lastSync;
+  var firstDelay = Math.max(0, SYNC_INTERVAL_MS - elapsed);
+
+  setTimeout(function() {
+    periodicSync();
+    // 之后每6小时执行一次
+    _periodicSyncTimer = setInterval(periodicSync, SYNC_INTERVAL_MS);
+  }, firstDelay);
+}
+
+// 页面加载时：3 秒后首次拉取（保持快速响应），然后启动6小时周期
+function initSync() {
+  var cfg = loadSyncConfig();
+  if (!cfg.token || !cfg.gistId) return;
+
+  // 首次加载先拉取一次
+  setTimeout(tryAutoPull, 3000);
+  // 启动6小时周期
+  startPeriodicSync();
+}
+
+// ========== 数据导出 ==========
+function exportData() {
+  var data = {
+    version: 1,
+    exportTime: new Date().toISOString(),
+    records: loadRecords(),
+    nameMap: loadNameMap(),
+    feeConfig: loadFeeConfig()
+  };
+  var json = JSON.stringify(data, null, 2);
+  var blob = new Blob([json], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var d = new Date();
+  var ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  a.href = url;
+  a.download = 'etf-ledger-backup-' + ds + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('数据导出成功！');
+}
+
+// ========== 数据导入 ==========
+function triggerImport() {
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-file-input').click();
+}
+
+function importData(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      // 兼容纯 records 数组格式
+      var records, nameMap, feeConfig;
+      if (Array.isArray(data)) {
+        records = data;
+        nameMap = {};
+        feeConfig = null;
+      } else {
+        records = data.records || [];
+        nameMap = data.nameMap || {};
+        feeConfig = data.feeConfig || null;
+      }
+
+      var existing = loadRecords();
+      var existingIds = new Set(existing.map(function(r){ return r.id; }));
+      var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
+      var mergedRecords = existing.concat(newRecords);
+
+      var existingMap = loadNameMap();
+      Object.assign(existingMap, nameMap);
+
+      saveRecords(mergedRecords);
+      saveNameMap(existingMap);
+      if (feeConfig) saveFeeConfig(feeConfig);
+
+      updateFeeDisplay();
+      refreshAll();
+      showToast('导入成功！新增 ' + newRecords.length + ' 条记录');
+    } catch(err) {
+      alert('导入失败：文件格式不正确，请选择有效的备份文件');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ========== 东方财富 API 获取 ETF 名称（JSONP 方式，绕过跨域限制） ==========
+var _pendingFetch = {};
+var _jsonpCallbacks = {};
+var _jsonpCallbackId = 0;
+
+function getMarketPrefix(code) {
+  if (/^5/.test(code)) return '1.';
+  if (/^1/.test(code)) return '0.';
+  return '1.';
+}
+
+function fetchETFNameFromAPI(code, type) {
+  var prefix = getMarketPrefix(code);
+
+  var nameEl = document.getElementById(type + '-name');
+  nameEl.value = '';
+  nameEl.placeholder = '查询中...';
+  nameEl.classList.add('name-loading');
+
+  var requestId = code + '_' + Date.now();
+  _pendingFetch[type] = requestId;
+
+  var cbName = '_nameCb_' + (++_jsonpCallbackId);
+  var timedOut = false;
+  var scriptEl = null;
+
+  _jsonpCallbacks[cbName] = function(data) {
+    if (timedOut) return;
+    clearTimeout(tid);
+    if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    delete _jsonpCallbacks[cbName];
+    window[cbName] = undefined;
+    try { delete window[cbName]; } catch(e) {}
+
+    if (_pendingFetch[type] !== requestId) return;
+    if (data && data.data && data.data.f58) {
+      var name = data.data.f58;
+      document.getElementById(type + '-name').value = name;
+      document.getElementById(type + '-name').placeholder = '输入代码自动填充';
+      document.getElementById(type + '-name').classList.remove('name-loading');
+      var map = loadNameMap();
+      map[code] = name;
+      saveNameMap(map);
+      if (data.data.f43 !== undefined && data.data.f43 !== null && data.data.f43 !== '-') {
+        var price = parseFloat(data.data.f43) / 1000;
+        if (!isNaN(price) && price > 0) {
+          document.getElementById(type + '-price').value = price;
+          showPriceHint(type);
+          if (type === 'buy') calcBuy();
+          else calcSell();
+        }
+      }
+    } else {
+      fallbackName(code, type);
+    }
+  };
+
+  window[cbName] = _jsonpCallbacks[cbName];
+
+  var url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + prefix + code + '&fields=f57,f58,f43&cb=' + cbName;
+  scriptEl = document.createElement('script');
+  scriptEl.src = url;
+  scriptEl.onerror = function() {
+    if (timedOut) return;
+    timedOut = true;
+    if (scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    delete _jsonpCallbacks[cbName];
+    window[cbName] = undefined;
+    try { delete window[cbName]; } catch(e) {}
+    if (_pendingFetch[type] !== requestId) return;
+    fallbackName(code, type);
+  };
+  document.head.appendChild(scriptEl);
+
+  var tid = setTimeout(function() {
+    if (timedOut) return;
+    timedOut = true;
+    if (scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    delete _jsonpCallbacks[cbName];
+    window[cbName] = undefined;
+    try { delete window[cbName]; } catch(e) {}
+    if (_pendingFetch[type] !== requestId) return;
+    fallbackName(code, type);
+  }, 4000);
+}
+
+function fallbackName(code, type) {
+  var nameEl = document.getElementById(type + '-name');
+  nameEl.classList.remove('name-loading');
+  if (BUILTIN_ETF_MAP[code]) {
+    nameEl.value = BUILTIN_ETF_MAP[code];
+    nameEl.placeholder = '输入代码自动填充';
+  } else {
+    var map = loadNameMap();
+    if (map[code]) {
+      nameEl.value = map[code];
+    } else {
+      nameEl.value = '';
+    }
+    nameEl.placeholder = '输入代码自动填充';
+  }
+}
+
+function showPriceHint(type) {
+  var hintEl = document.getElementById(type + '-price-hint');
+  if (!hintEl) return;
+  hintEl.textContent = '已获取现价';
+  hintEl.style.opacity = '1';
+  clearTimeout(hintEl._timeout);
+  hintEl._timeout = setTimeout(function() {
+    hintEl.style.opacity = '0';
+    setTimeout(function() { hintEl.textContent = ''; }, 300);
+  }, 1000);
+}
+
+// ========== 获取实时现价（不覆盖已填名称，JSONP 方式） ==========
+function fetchETFPriceFromAPI(code, type) {
+  var prefix = getMarketPrefix(code);
+
+  var cbName = '_priceCb_' + (++_jsonpCallbackId);
+  var timedOut = false;
+  var scriptEl = null;
+
+  _jsonpCallbacks[cbName] = function(data) {
+    if (timedOut) return;
+    clearTimeout(tid);
+    if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    delete _jsonpCallbacks[cbName];
+    window[cbName] = undefined;
+    try { delete window[cbName]; } catch(e) {}
+
+    if (data && data.data) {
+      var nameEl = document.getElementById(type + '-name');
+      if (!nameEl.value && data.data.f58) {
+        nameEl.value = data.data.f58;
+        nameEl.placeholder = '输入代码自动填充';
+        nameEl.classList.remove('name-loading');
+        var map = loadNameMap();
+        map[code] = data.data.f58;
+        saveNameMap(map);
+      }
+      if (data.data.f43 !== undefined && data.data.f43 !== null && data.data.f43 !== '-') {
+        var price = parseFloat(data.data.f43) / 1000;
+        if (!isNaN(price) && price > 0) {
+          document.getElementById(type + '-price').value = price.toFixed(3);
+          showPriceHint(type);
+          if (type === 'buy') calcBuy();
+          else calcSell();
+        }
+      }
+    }
+  };
+
+  window[cbName] = _jsonpCallbacks[cbName];
+
+  var url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + prefix + code + '&fields=f57,f58,f43&cb=' + cbName;
+  scriptEl = document.createElement('script');
+  scriptEl.src = url;
+  scriptEl.onerror = function() {
+    if (timedOut) return;
+    timedOut = true;
+    if (scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    delete _jsonpCallbacks[cbName];
+    window[cbName] = undefined;
+    try { delete window[cbName]; } catch(e) {}
+  };
+  document.head.appendChild(scriptEl);
+
+  var tid = setTimeout(function() {
+    if (timedOut) return;
+    timedOut = true;
+    if (scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    delete _jsonpCallbacks[cbName];
+    window[cbName] = undefined;
+    try { delete window[cbName]; } catch(e) {}
+  }, 4000);
+}
+
+// ========== 自动填名称 ==========
+var _autoFillTimer;
+function autoFillName(type) {
+  var codeEl = document.getElementById(type + '-code');
+  var code = codeEl.value.trim();
+  if (!code) return;
+
+  if (BUILTIN_ETF_MAP[code]) {
+    document.getElementById(type + '-name').value = BUILTIN_ETF_MAP[code];
+    document.getElementById(type + '-name').placeholder = '输入代码自动填充';
+    document.getElementById(type + '-name').classList.remove('name-loading');
+  } else {
+    var map = loadNameMap();
+    if (map[code]) {
+      document.getElementById(type + '-name').value = map[code];
+      document.getElementById(type + '-name').placeholder = '输入代码自动填充';
+      document.getElementById(type + '-name').classList.remove('name-loading');
+    }
+  }
+
+  fetchETFPriceFromAPI(code, type);
+}
+
+function onCodeInput(type) {
+  clearTimeout(_autoFillTimer);
+  _autoFillTimer = setTimeout(function() { autoFillName(type); }, 300);
+}
+
+// ========== 保存买入 ==========
+function saveBuy() {
+  var code = document.getElementById('buy-code').value.trim();
+  var name = document.getElementById('buy-name').value.trim();
+  var price = parseFloat(document.getElementById('buy-price').value);
+  var qty = parseInt(document.getElementById('buy-qty').value);
+  var amount = parseFloat(document.getElementById('buy-amount').value);
+  var fee = parseFloat(document.getElementById('buy-fee').value);
+  var date = document.getElementById('buy-date').value;
+  var note = document.getElementById('buy-note').value.trim();
+
+  if (!code || !name || isNaN(price) || isNaN(qty) || price <= 0 || qty <= 0) {
+    document.getElementById('buy-msg').innerHTML = '<span style="color:#E4393C;">请填写完整信息</span>';
+    return;
+  }
+
+  var record = {
+    id: genId(),
+    type: 'buy',
+    code: code,
+    name: name,
+    price: price,
+    quantity: qty,
+    amount: amount || Math.round(price * qty * 100) / 100,
+    fee: fee || calcFee(amount || price * qty),
+    date: date,
+    note: note,
+    remaining: qty
+  };
+
+  var records = loadRecords();
+  records.push(record);
+  saveRecords(records);
+
+  var map = loadNameMap();
+  map[code] = name;
+  saveNameMap(map);
+
+  document.getElementById('buy-msg').innerHTML = '<span style="color:#2E7D32;">买入记录已保存</span>';
+  document.getElementById('buy-code').value = '';
+  document.getElementById('buy-name').value = '';
+  document.getElementById('buy-price').value = '';
+  document.getElementById('buy-qty').value = '';
+  document.getElementById('buy-amount').value = '';
+  document.getElementById('buy-fee').value = '';
+  document.getElementById('buy-note').value = '';
+  var today = new Date();
+  document.getElementById('buy-date').value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  refreshAll();
+}
+
+// ========== 保存卖出 ==========
+function saveSell() {
+  var code = document.getElementById('sell-code').value.trim();
+  var name = document.getElementById('sell-name').value.trim();
+  var price = parseFloat(document.getElementById('sell-price').value);
+  var qty = parseInt(document.getElementById('sell-qty').value);
+
+  // 校验卖出数量不超过持仓
+  var records = loadRecords();
+  var totalRemaining = 0;
+  records.forEach(function(r) {
+    if (r.type === 'buy' && r.code === code) totalRemaining += r.remaining;
+  });
+  if (!isNaN(qty) && qty > 0 && totalRemaining > 0 && qty > totalRemaining) {
+    document.getElementById('sell-msg').innerHTML = '<span style="color:#E4393C;">卖出数量（' + qty + '）超过持仓（' + totalRemaining + '），请检查</span>';
+    return;
+  }
+
+  var amount = parseFloat(document.getElementById('sell-amount').value);
+  var fee = parseFloat(document.getElementById('sell-fee').value);
+  var date = document.getElementById('sell-date').value;
+  var note = document.getElementById('sell-note').value.trim();
+
+  if (!code || !name || isNaN(price) || isNaN(qty) || price <= 0 || qty <= 0) {
+    document.getElementById('sell-msg').innerHTML = '<span style="color:#E4393C;">请填写完整信息</span>';
+    return;
+  }
+
+  var record = {
+    id: genId(),
+    type: 'sell',
+    code: code,
+    name: name,
+    price: price,
+    quantity: qty,
+    amount: amount || Math.round(price * qty * 100) / 100,
+    fee: fee || calcFee(amount || price * qty),
+    date: date,
+    note: note,
+    linkedBuys: []
+  };
+
+  records.push(record);
+  saveRecords(records);
+
+  var map = loadNameMap();
+  map[code] = name;
+  saveNameMap(map);
+
+  document.getElementById('sell-msg').innerHTML = '<span style="color:#2E7D32;">卖出记录已保存，请在交易记录中关联买入批次</span>';
+  document.getElementById('sell-code').value = '';
+  document.getElementById('sell-name').value = '';
+  document.getElementById('sell-price').value = '';
+  document.getElementById('sell-qty').value = '';
+  document.getElementById('sell-amount').value = '';
+  document.getElementById('sell-fee').value = '';
+  document.getElementById('sell-note').value = '';
+  var today = new Date();
+  document.getElementById('sell-date').value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  refreshAll();
+}
+
+// ========== 编辑记录 ==========
+function editRecord(recId) {
+  var records = loadRecords();
+  var rec = records.find(function(r) { return r.id === recId; });
+  if (!rec) return;
+
+  if (rec.type === 'sell' && rec.linkedBuys && rec.linkedBuys.length > 0) {
+    rec.linkedBuys.forEach(function(lb) {
+      var buy = records.find(function(r) { return r.id === lb.buyId; });
+      if (buy) buy.remaining += lb.quantity;
+    });
+    rec.linkedBuys = [];
+    saveRecords(records);
+  }
+
+  if (rec.type === 'buy') {
+    document.getElementById('buy-code').value = rec.code;
+    document.getElementById('buy-name').value = rec.name;
+    document.getElementById('buy-price').value = rec.price;
+    document.getElementById('buy-qty').value = rec.quantity;
+    document.getElementById('buy-amount').value = rec.amount;
+    document.getElementById('buy-fee').value = rec.fee;
+    document.getElementById('buy-date').value = rec.date;
+    document.getElementById('buy-note').value = rec.note || '';
+    switchTabDirect('buy');
+    var idx = records.indexOf(rec);
+    records.splice(idx, 1);
+    saveRecords(records);
+    document.getElementById('buy-msg').innerHTML = '<span style="color:#E65100;">正在编辑买入记录，修改后重新保存</span>';
+  } else {
+    document.getElementById('sell-code').value = rec.code;
+    document.getElementById('sell-name').value = rec.name;
+    document.getElementById('sell-price').value = rec.price;
+    document.getElementById('sell-qty').value = rec.quantity;
+    document.getElementById('sell-amount').value = rec.amount;
+    document.getElementById('sell-fee').value = rec.fee;
+    document.getElementById('sell-date').value = rec.date;
+    document.getElementById('sell-note').value = rec.note || '';
+    switchTabDirect('sell');
+    var idx2 = records.indexOf(rec);
+    records.splice(idx2, 1);
+    saveRecords(records);
+    document.getElementById('sell-msg').innerHTML = '<span style="color:#E65100;">正在编辑卖出记录，修改后重新保存</span>';
+  }
+  refreshAll();
+}
+
+function deleteRecord(recId) {
+  var records = loadRecords();
+  var rec = records.find(function(r) { return r.id === recId; });
+  if (!rec) return;
+
+  if (rec.type === 'buy' && rec.remaining < rec.quantity) {
+    var linkedSellCount = 0;
+    records.forEach(function(r) {
+      if (r.type === 'sell' && r.linkedBuys) {
+        r.linkedBuys.forEach(function(lb) {
+          if (lb.buyId === recId) linkedSellCount++;
+        });
+      }
+    });
+    if (!confirm('该买入记录已被 ' + linkedSellCount + ' 笔卖出关联，删除后将同时取消这些关联。确认删除？')) return;
+    records.forEach(function(r) {
+      if (r.type === 'sell' && r.linkedBuys) {
+        r.linkedBuys = r.linkedBuys.filter(function(lb) { return lb.buyId !== recId; });
+      }
+    });
+    var idx = records.indexOf(rec);
+    records.splice(idx, 1);
+    saveRecords(records);
+    refreshAll();
+    return;
+  }
+
+  if (!confirm('确认删除该记录？')) return;
+
+  if (rec.type === 'sell' && rec.linkedBuys && rec.linkedBuys.length > 0) {
+    rec.linkedBuys.forEach(function(lb) {
+      var buy = records.find(function(r) { return r.id === lb.buyId; });
+      if (buy) buy.remaining += lb.quantity;
+    });
+  }
+
+  var idx = records.indexOf(rec);
+  records.splice(idx, 1);
+  saveRecords(records);
+  refreshAll();
+}
+
+// ========== 关联弹窗 ==========
+function openLinkOverlay(sellId) {
+  var records = loadRecords();
+  var sell = records.find(function(r) { return r.id === sellId; });
+  if (!sell) return;
+
+  var availableBuys = records.filter(function(r) {
+    return r.type === 'buy' && r.code === sell.code && r.remaining > 0;
+  });
+
+  if (sell.linkedBuys && sell.linkedBuys.length > 0) {
+    sell.linkedBuys.forEach(function(lb) {
+      var buy = records.find(function(r) { return r.id === lb.buyId; });
+      if (buy && !availableBuys.find(function(b) { return b.id === lb.buyId; })) {
+        availableBuys.push(buy);
+      }
+    });
+  }
+
+  var sellNetPrice = (sell.amount - sell.fee) / sell.quantity;
+
+  var html = '<div class="overlay-title">关联买入批次 —— ' + sell.code + ' ' + sell.name + '<button class="overlay-close" onclick="closeOverlay()">&times;</button></div>';
+  html += '<p style="font-size:13px;color:#888;margin-bottom:12px;">卖出 ' + sell.quantity + ' 份，卖出净价 ' + sellNetPrice.toFixed(3) + '</p>';
+
+  if (availableBuys.length === 0) {
+    html += '<div class="empty-state">该 ETF 没有可关联的买入批次</div>';
+  } else {
+    html += '<div id="batch-list">';
+    availableBuys.forEach(function(buy) {
+      var buyCostPrice = (buy.amount + buy.fee) / buy.quantity;
+      var origRemaining = buy.remaining;
+      if (sell.linkedBuys) {
+        var linked = sell.linkedBuys.find(function(lb) { return lb.buyId === buy.id; });
+        if (linked) origRemaining = buy.remaining + linked.quantity;
+      }
+      var linkedQty = 0;
+      if (sell.linkedBuys) {
+        var lq = sell.linkedBuys.find(function(lb) { return lb.buyId === buy.id; });
+        if (lq) linkedQty = lq.quantity;
+      }
+      html += '<div class="batch-item">';
+      html += '<div class="batch-info">';
+      html += '<span>日期: <span class="highlight">' + (buy.date || '-') + '</span></span>';
+      html += '<span>买入含费价: <span class="highlight">' + buyCostPrice.toFixed(3) + '</span></span>';
+      html += '<span>原始数量: <span class="highlight">' + buy.quantity + '</span></span>';
+      html += '<span>剩余可卖: <span class="highlight">' + origRemaining + '</span></span>';
+      html += '</div>';
+      html += '<div class="batch-row">';
+      html += '<span style="font-size:13px;">本次关联:</span>';
+      html += '<input type="number" min="0" max="' + origRemaining + '" value="' + linkedQty + '" data-buy-id="' + buy.id + '" data-max="' + origRemaining + '" oninput="onBatchInput()" style="width:100px;" id="batch-input-' + buy.id + '">';
+      html += '<span style="font-size:12px;color:#999;">份</span>';
+      html += '<button type="button" onclick="(function(){var inp=document.getElementById(\'batch-input-' + buy.id + '\');inp.value=' + origRemaining + ';onBatchInput();})()" style="padding:2px 8px;font-size:12px;background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;border-radius:4px;cursor:pointer;margin-left:4px;">全部</button>';
+      var profit = (sellNetPrice - buyCostPrice) * linkedQty;
+      html += '<span id="profit-' + buy.id + '" class="' + (profit >= 0 ? 'profit-positive' : 'profit-negative') + '" style="font-size:13px;">';
+      if (linkedQty > 0) html += (profit >= 0 ? '+' : '') + profit.toFixed(2);
+      html += '</span>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    html += '<div class="summary-bar">';
+    html += '<span id="link-summary">已分配 0 / 待关联 ' + sell.quantity + ' 份</span>';
+    html += '<span id="link-total-profit" style="font-size:14px;font-weight:600;"></span>';
+    html += '</div>';
+
+    html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+    html += '<button class="btn btn-primary" id="btn-confirm-link" disabled onclick="confirmLink(\'' + sellId + '\')">确认关联</button>';
+    if (sell.linkedBuys && sell.linkedBuys.length > 0) {
+      html += '<button class="btn btn-danger" onclick="cancelLink(\'' + sellId + '\')">取消关联</button>';
+    }
+    html += '</div>';
+  }
+
+  document.getElementById('link-content').innerHTML = html;
+  document.getElementById('link-overlay').classList.remove('hidden');
+  setTimeout(updateLinkSummary, 100);
+}
+
+function closeOverlay() {
+  document.getElementById('link-overlay').classList.add('hidden');
+}
+
+function onBatchInput() {
+  updateLinkSummary();
+}
+
+function updateLinkSummary() {
+  var sellId = getCurrentSellId();
+  if (!sellId) return;
+  var records = loadRecords();
+  var sell = records.find(function(r) { return r.id === sellId; });
+  if (!sell) return;
+
+  var inputs = document.querySelectorAll('#batch-list input[type="number"]');
+  var totalAllocated = 0;
+  var totalProfit = 0;
+  var sellNetPrice = (sell.amount - sell.fee) / sell.quantity;
+
+  inputs.forEach(function(inp) {
+    var qty = parseInt(inp.value) || 0;
+    totalAllocated += qty;
+    var buyId = inp.dataset.buyId;
+    var buy = records.find(function(r) { return r.id === buyId; });
+    if (buy) {
+      var buyCostPrice = (buy.amount + buy.fee) / buy.quantity;
+      var profit = (sellNetPrice - buyCostPrice) * qty;
+      totalProfit += profit;
+      var profitEl = document.getElementById('profit-' + buyId);
+      if (profitEl) {
+        profitEl.textContent = qty > 0 ? (profit >= 0 ? '+' : '') + profit.toFixed(2) : '';
+        profitEl.className = profit >= 0 ? 'profit-positive' : 'profit-negative';
+      }
+    }
+  });
+
+  var remaining = sell.quantity - totalAllocated;
+  var summaryEl = document.getElementById('link-summary');
+  if (summaryEl) {
+    summaryEl.textContent = '已分配 ' + totalAllocated + ' / 待关联 ' + sell.quantity + ' 份';
+    if (remaining < 0) {
+      summaryEl.innerHTML += ' <span style="color:#E4393C;">（超出 ' + Math.abs(remaining) + ' 份）</span>';
+    }
+  }
+
+  var profitEl = document.getElementById('link-total-profit');
+  if (profitEl) {
+    profitEl.textContent = '总盈亏: ' + (totalProfit >= 0 ? '+' : '') + totalProfit.toFixed(2);
+    profitEl.className = totalProfit >= 0 ? 'profit-positive' : 'profit-negative';
+  }
+
+  var btn = document.getElementById('btn-confirm-link');
+  if (btn) btn.disabled = (totalAllocated !== sell.quantity);
+}
+
+function getCurrentSellId() {
+  var content = document.getElementById('link-content').innerHTML;
+  var match = content.match(/confirmLink\('(rec_\w+_\w+)'\)/);
+  return match ? match[1] : null;
+}
+
+function confirmLink(sellId) {
+  var records = loadRecords();
+  var sell = records.find(function(r) { return r.id === sellId; });
+  if (!sell) return;
+
+  var inputs = document.querySelectorAll('#batch-list input[type="number"]');
+  var linkedBuys = [];
+  var totalAllocated = 0;
+
+  inputs.forEach(function(inp) {
+    var qty = parseInt(inp.value) || 0;
+    if (qty > 0) {
+      var buyId = inp.dataset.buyId;
+      var buy = records.find(function(r) { return r.id === buyId; });
+      if (buy) {
+        linkedBuys.push({ buyId: buyId, quantity: qty });
+        totalAllocated += qty;
+      }
+    }
+  });
+
+  if (totalAllocated !== sell.quantity) {
+    alert('分配数量总和必须等于卖出数量 ' + sell.quantity + ' 份');
+    return;
+  }
+
+  if (sell.linkedBuys) {
+    sell.linkedBuys.forEach(function(lb) {
+      var buy = records.find(function(r) { return r.id === lb.buyId; });
+      if (buy) buy.remaining += lb.quantity;
+    });
+  }
+
+  linkedBuys.forEach(function(lb) {
+    var buy = records.find(function(r) { return r.id === lb.buyId; });
+    if (buy) buy.remaining -= lb.quantity;
+  });
+
+  sell.linkedBuys = linkedBuys;
+  saveRecords(records);
+  closeOverlay();
+  refreshAll();
+}
+
+function cancelLink(sellId) {
+  if (!confirm('确认取消关联？买入批次剩余数量将被恢复。')) return;
+
+  var records = loadRecords();
+  var sell = records.find(function(r) { return r.id === sellId; });
+  if (!sell) return;
+
+  if (sell.linkedBuys) {
+    sell.linkedBuys.forEach(function(lb) {
+      var buy = records.find(function(r) { return r.id === lb.buyId; });
+      if (buy) buy.remaining += lb.quantity;
+    });
+  }
+  sell.linkedBuys = [];
+  saveRecords(records);
+  closeOverlay();
+  refreshAll();
+}
+
+// ========== 买入关联查询弹窗 ==========
+function openBuyLinkOverlay(buyId) {
+  var records = loadRecords();
+  var buy = records.find(function(r) { return r.id === buyId; });
+  if (!buy) return;
+
+  var buyCostPrice = (buy.amount + buy.fee) / buy.quantity;
+
+  var linkedSells = [];
+  records.forEach(function(r) {
+    if (r.type === 'sell' && r.linkedBuys) {
+      r.linkedBuys.forEach(function(lb) {
+        if (lb.buyId === buyId) {
+          linkedSells.push({ sell: r, linkedQty: lb.quantity });
+        }
+      });
+    }
+  });
+
+  var html = '<div class="overlay-title">关联卖出明细 —— ' + buy.code + ' ' + buy.name + '<button class="overlay-close" onclick="closeBuyOverlay()">&times;</button></div>';
+
+  html += '<div class="buy-link-info">';
+  html += '<div class="info-row">';
+  html += '<span>代码: <span class="hl">' + buy.code + '</span></span>';
+  html += '<span>名称: <span class="hl">' + buy.name + '</span></span>';
+  html += '<span>买入价格: <span class="hl">' + buy.price.toFixed(3) + '</span></span>';
+  html += '<span>买入数量: <span class="hl">' + buy.quantity + '</span></span>';
+  html += '<span>已关联数量: <span class="hl">' + (buy.quantity - buy.remaining) + '</span></span>';
+  html += '<span>买入含费成本价: <span class="hl">' + buyCostPrice.toFixed(3) + '</span></span>';
+  html += '</div>';
+  html += '</div>';
+  html += '<div class="buy-link-info" style="margin-bottom:14px;background:#E8F5E9;">';
+  html += '<div class="info-row">';
+  html += '<span>剩余持仓: <span class="hl">' + buy.remaining + ' 份</span></span>';
+  html += '<span>持仓均价(含费): <span class="hl">' + buyCostPrice.toFixed(3) + '</span></span>';
+  html += '<span>持仓成本: <span class="hl">' + (buyCostPrice * buy.remaining).toFixed(2) + '</span></span>';
+  html += '</div>';
+  html += '</div>';
+
+  if (linkedSells.length === 0) {
+    html += '<div class="empty-state">未找到关联的卖出记录</div>';
+  } else {
+    var totalLinkedQty = 0;
+    var totalProfit = 0;
+    linkedSells.forEach(function(ls) {
+      var sell = ls.sell;
+      var linkedQty = ls.linkedQty;
+      var sellNetPrice = (sell.amount - sell.fee) / sell.quantity;
+      var profit = (sellNetPrice - buyCostPrice) * linkedQty;
+      totalLinkedQty += linkedQty;
+      totalProfit += profit;
+
+      html += '<div class="link-sell-item">';
+      html += '<div class="sell-row">';
+      html += '<span>卖出日期: <span class="hl">' + (sell.date || '-') + '</span></span>';
+      html += '<span>卖出价格: <span class="hl">' + sell.price.toFixed(3) + '</span></span>';
+      html += '<span>卖出净价: <span class="hl">' + sellNetPrice.toFixed(3) + '</span></span>';
+      html += '<span>关联数量: <span class="hl">' + linkedQty + '</span></span>';
+      html += '<span>本笔盈亏: <span class="' + (profit >= 0 ? 'profit-positive' : 'profit-negative') + '" style="font-weight:600;">' + (profit >= 0 ? '+' : '') + profit.toFixed(2) + '</span></span>';
+      html += '</div>';
+      html += '</div>';
+    });
+
+    html += '<div class="summary-bar">';
+    html += '<span>总已关联数量: ' + totalLinkedQty + ' 份</span>';
+    html += '<span>已实现盈亏: <strong class="' + (totalProfit >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (totalProfit >= 0 ? '+' : '') + totalProfit.toFixed(2) + '</strong></span>';
+    html += '</div>';
+  }
+
+  document.getElementById('buy-link-content').innerHTML = html;
+  document.getElementById('buy-link-overlay').classList.remove('hidden');
+}
+
+function closeBuyOverlay() {
+  document.getElementById('buy-link-overlay').classList.add('hidden');
+}
+
+// ========== Tab 切换（修复全局 event 依赖问题） ==========
+function switchTab(evt, tab) {
+  var buttons = document.querySelectorAll('.tab-bar button');
+  var tabNames = ['buy', 'sell', 'records', 'holdings', 'stats'];
+  buttons.forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+  if (evt && evt.target) evt.target.classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  if (tab === 'sell') renderHoldings();
+  if (tab === 'holdings') renderHoldingPanel();
+  if (tab === 'records') renderRecords();
+  if (tab === 'stats') renderStats();
+}
+
+// 内部调用（编辑跳转）
+function switchTabDirect(tab) {
+  var buttons = document.querySelectorAll('.tab-bar button');
+  var tabNames = ['buy', 'sell', 'records', 'holdings', 'stats'];
+  buttons.forEach(function(b, i) { b.classList.toggle('active', tabNames[i] === tab); });
+  document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  if (tab === 'sell') renderHoldings();
+  if (tab === 'holdings') renderHoldingPanel();
+  if (tab === 'records') renderRecords();
+  if (tab === 'stats') renderStats();
+}
+
+// ========== 持仓面板（券商持仓页风格） ==========
+var _hpPriceCache = {};
+
+function renderHoldingPanel() {
+  var records = loadRecords();
+  var nameMap = loadNameMap();
+  var container = document.getElementById('holdings-panel-container');
+
+  // 先统计所有买入和卖出的汇总（含已清仓的记录）
+  var buyMap = {};  // 所有买入汇总
+  var sellMap = {}; // 所有卖出汇总
+  records.forEach(function(rec) {
+    if (rec.type === 'buy') {
+      if (!buyMap[rec.code]) buyMap[rec.code] = { totalBuyAmount: 0, totalBuyFee: 0 };
+      buyMap[rec.code].totalBuyAmount += rec.amount || 0;
+      buyMap[rec.code].totalBuyFee += rec.fee || 0;
+    }
+    if (rec.type === 'sell') {
+      if (!sellMap[rec.code]) sellMap[rec.code] = { totalSellAmount: 0, totalSellFee: 0 };
+      sellMap[rec.code].totalSellAmount += rec.amount || 0;
+      sellMap[rec.code].totalSellFee += rec.fee || 0;
+    }
+  });
+
+  // 再汇总有剩余持仓的 ETF
+  var etfMap = {};
+  records.forEach(function(rec) {
+    if (rec.type === 'buy' && rec.remaining > 0) {
+      if (!etfMap[rec.code]) {
+        etfMap[rec.code] = {
+          code: rec.code,
+          name: rec.name || nameMap[rec.code] || BUILTIN_ETF_MAP[rec.code] || rec.code,
+          totalQty: 0,
+          totalCost: 0,
+          totalSimpleCost: 0,
+          batches: []
+        };
+      }
+      var batchCost = (rec.amount + rec.fee) / rec.quantity * rec.remaining;
+      var batchPrice = (rec.amount + rec.fee) / rec.quantity; // 含手续费摊薄单价
+      var batchSimpleCost = rec.price * rec.remaining; // 不含手续费的原始买入成本
+      etfMap[rec.code].totalQty += rec.remaining;
+      etfMap[rec.code].totalCost += batchCost;
+      etfMap[rec.code].totalSimpleCost += batchSimpleCost;
+      etfMap[rec.code].batches.push({
+        id: rec.id,
+        date: rec.date || '-',
+        qty: rec.remaining,
+        origQty: rec.quantity,
+        price: rec.price,
+        avgPrice: batchPrice,
+        cost: batchCost,
+        fee: rec.fee
+      });
+    }
+  });
+
+  var codes = Object.keys(etfMap).sort();
+
+  if (codes.length === 0) {
+    container.innerHTML = '<div class="hp-empty">📭 暂无持仓，快去买入第一只 ETF 吧！</div>';
+    return;
+  }
+
+  // 计算各只均价
+  codes.forEach(function(code) {
+    var e = etfMap[code];
+    var b = buyMap[code] || { totalBuyAmount: 0, totalBuyFee: 0 };
+    var s = sellMap[code] || { totalSellAmount: 0, totalSellFee: 0 };
+    e.avgCost = e.totalQty > 0 ? e.totalCost / e.totalQty : 0; // 含费摊薄成本价
+    e.avgPriceSimple = e.totalQty > 0 ? e.totalSimpleCost / e.totalQty : 0; // 不含费成本价
+    // 究极成本价 = (总买入含费 - 总卖出净得) / 剩余数量
+    var totalBuyWithFee = b.totalBuyAmount + b.totalBuyFee;
+    var totalSellNet = s.totalSellAmount - s.totalSellFee;
+    e.ultimateCost = totalBuyWithFee - totalSellNet; // 究极持仓成本
+    e.avgUltimateCost = e.totalQty > 0 ? e.ultimateCost / e.totalQty : 0; // 究极成本价
+  });
+
+  // 渲染骨架（先用成本价占位）
+  function buildHTML(priceMap) {
+    var allLoading = !priceMap || Object.keys(priceMap).length === 0;
+
+    var now = new Date();
+    var ts = now.getHours() + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+
+    // 顶部工具栏
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px 6px;">';
+    html += '<span style="font-size:12px;color:#999;">' + (allLoading ? '行情获取中…' : '更新于 ' + ts) + '</span>';
+    html += '<button onclick="refreshHoldingPanel()" style="background:#fff;color:#E4393C;border:1px solid #FFCDD2;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.06);">↻ 刷新行情</button>';
+    html += '</div>';
+
+    html += '<div style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden;">';
+    html += '<div class="hp-stock-header"><span>名称/代码</span><span>盈亏/盈亏%</span><span>持仓/持仓成本</span><span>成本价/究极成本价</span></div>';
+
+    codes.forEach(function(code) {
+      var e = etfMap[code];
+      var cached = priceMap && priceMap[code];
+      var price = cached && cached.price ? cached.price : 0;
+      var mktVal = price > 0 ? price * e.totalQty : null;
+      // 浮动盈亏基于究极成本（已扣除已实现利润）
+      var pnl = (mktVal !== null) ? mktVal - e.ultimateCost : null;
+      var pnlPct = (pnl !== null && e.ultimateCost > 0) ? pnl / e.ultimateCost * 100 : (pnl !== null && e.ultimateCost < 0 ? pnl / Math.abs(e.ultimateCost) * 100 : null);
+      var pnlColorClass = pnl === null ? 'hp-loading' : (pnl > 0 ? 'hp-pos' : (pnl < 0 ? 'hp-neg' : 'hp-zero'));
+
+      // 主行：点击展开/折叠批次明细
+      html += '<div class="hp-stock-row" onclick="toggleHoldingBatch(\'' + code + '\')">';
+      // col1: 名称/代码
+      html += '<div><div class="hp-name">' + e.name + '<span class="hp-expand-icon" id="hp-icon-' + code + '">▶</span></div><div class="hp-code">' + code + '</div></div>';
+      // col2: 盈亏/盈亏%
+      html += '<div>';
+      if (pnl !== null) {
+        html += '<div class="hp-pnl ' + pnlColorClass + '" style="font-size:15px;font-weight:700;">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '</div>';
+        html += '<div class="hp-pnl-pct ' + pnlColorClass + '">' + (pnlPct >= 0 ? '+' : '') + (pnlPct !== null ? pnlPct.toFixed(2) : '—') + '%</div>';
+      } else {
+        html += '<div class="hp-pnl hp-loading" id="hp-pnl-' + code + '">—</div>';
+        html += '<div class="hp-pnl-pct hp-loading">获取中…</div>';
+      }
+      html += '</div>';
+      // col3: 持仓/持仓成本（究极成本）
+      var costDisplay = e.ultimateCost >= 0 ? e.ultimateCost.toFixed(2) : e.ultimateCost.toFixed(2);
+      html += '<div><div class="hp-qty">' + e.totalQty.toLocaleString() + '</div><div class="hp-qty-avail">成本 ' + costDisplay + '</div></div>';
+      // col4: 成本价/究极成本价 并列显示
+      html += '<div>';
+      // 成本价(不含费) + 究极成本价(含费且扣除已实现利润)
+      var ultCostStr = e.avgUltimateCost >= 0 ? e.avgUltimateCost.toFixed(3) : e.avgUltimateCost.toFixed(3);
+      html += '<div class="hp-cost" style="font-size:12px;color:#888;">' + e.avgPriceSimple.toFixed(3) + '<span style="color:#E4393C;font-weight:600;margin-left:3px;">' + ultCostStr + '</span></div>';
+      if (price > 0) {
+        var priceColorClass = price > e.avgUltimateCost ? 'hp-pos' : (price < e.avgUltimateCost ? 'hp-neg' : 'hp-zero');
+        html += '<div class="hp-nowprice ' + priceColorClass + '" id="hp-nowprice-' + code + '" style="font-weight:600;">' + price.toFixed(3) + '</div>';
+      } else {
+        html += '<div class="hp-nowprice hp-loading" id="hp-nowprice-' + code + '">获取中…</div>';
+      }
+      html += '</div>';
+      html += '</div>'; // hp-stock-row end
+
+      // 批次明细区（默认折叠）
+      html += '<div class="hp-batch-group" id="hp-batch-' + code + '" style="display:none;">';
+      html += '<div class="hp-batch-header"><span>买入日期</span><span>持仓/原买入</span><span>批次成本</span><span>买入价/究极成本价</span></div>';
+      e.batches.forEach(function(b) {
+        html += '<div class="hp-batch-row">';
+        html += '<div class="hp-b-date">' + b.date + '</div>';
+        html += '<div class="hp-b-qty">' + b.qty + '<span style="color:#bbb;">/' + b.origQty + '</span></div>';
+        html += '<div class="hp-b-cost">' + b.cost.toFixed(2) + '</div>';
+        html += '<div class="hp-b-price">' + b.price.toFixed(3) + '<span style="color:#bbb;">/' + b.avgPrice.toFixed(3) + '</span></div>';
+        html += '</div>';
+      });
+      html += '</div>'; // hp-batch-group end
+    });
+
+    html += '</div>'; // list card end
+    return html;
+  }
+
+  container.innerHTML = buildHTML(null);
+
+  // 拉取实时价格，成功后更新
+  fetchHoldingPrices(etfMap, codes, function(priceMap) {
+    container.innerHTML = buildHTML(priceMap);
+  });
+}
+
+// 展开/折叠持仓批次明细
+function toggleHoldingBatch(code) {
+  var batchEl = document.getElementById('hp-batch-' + code);
+  var iconEl = document.getElementById('hp-icon-' + code);
+  var rowEl = batchEl.previousElementSibling;
+  if (!batchEl) return;
+  var isHidden = batchEl.style.display === 'none';
+  batchEl.style.display = isHidden ? 'block' : 'none';
+  if (iconEl) iconEl.textContent = isHidden ? '▼' : '▶';
+  if (rowEl) rowEl.classList.toggle('hp-expanded', isHidden);
+}
+
+function fetchHoldingPrices(etfMap, codes, callback) {
+  var priceMap = {};
+  var done = 0;
+  var total = codes.length;
+  if (total === 0) { callback(priceMap); return; }
+
+  codes.forEach(function(code) {
+    // 60s 缓存
+    var cache = _hpPriceCache[code];
+    if (cache && (Date.now() - cache.time < 60000)) {
+      priceMap[code] = { price: cache.price };
+      done++;
+      if (done === total) callback(priceMap);
+      return;
+    }
+
+    var cbName = '_hpCb_' + code + '_' + Date.now();
+    var timedOut = false;
+    var scriptEl = null;
+
+    window[cbName] = function(data) {
+      if (timedOut) return;
+      clearTimeout(tid);
+      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+      try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+
+      if (data && data.data && data.data.f43 !== undefined && data.data.f43 !== '-') {
+        var price = parseFloat(data.data.f43) / 1000;
+        if (!isNaN(price) && price > 0) {
+          _hpPriceCache[code] = { price: price, time: Date.now() };
+          priceMap[code] = { price: price };
+        }
+      }
+      done++;
+      if (done === total) callback(priceMap);
+    };
+
+    var market = (code.startsWith('6') || code.startsWith('5')) ? 1 : 0;
+    var secid = market + '.' + code;
+    var url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + secid + '&fields=f43&cb=' + cbName;
+
+    scriptEl = document.createElement('script');
+    scriptEl.src = url;
+    var tid = setTimeout(function() {
+      timedOut = true;
+      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+      try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+      done++;
+      if (done === total) callback(priceMap);
+    }, 8000);
+    document.head.appendChild(scriptEl);
+  });
+}
+
+function refreshHoldingPanel() {
+  _hpPriceCache = {};
+  renderHoldingPanel();
+}
+
+// ========== 持仓快速选择 ==========
+function renderHoldings() {
+  var records = loadRecords();
+  var nameMap = loadNameMap();
+  var holdings = {};
+
+  records.forEach(function(rec) {
+    if (rec.type === 'buy' && rec.remaining > 0) {
+      if (!holdings[rec.code]) {
+        holdings[rec.code] = { name: rec.name || nameMap[rec.code] || BUILTIN_ETF_MAP[rec.code] || rec.code, totalRemaining: 0 };
+      }
+      holdings[rec.code].totalRemaining += rec.remaining;
+    }
+  });
+
+  var container = document.getElementById('sell-holdings');
+  var codes = Object.keys(holdings).sort();
+
+  if (codes.length === 0) {
+    container.innerHTML = '<div class="holdings-empty">暂无持仓</div>';
+    return;
+  }
+
+  var html = '<div class="holdings-title">持仓 ETF</div><div class="holdings-tags">';
+  codes.forEach(function(code) {
+    var h = holdings[code];
+    html += '<span class="holding-tag" onclick="selectHolding(\'' + code + '\', \'' + h.name.replace(/'/g, "\\'") + '\')" title="' + h.name + '，共 ' + h.totalRemaining + ' 份">' + code + ' ' + h.name + '（' + h.totalRemaining + '份）</span>';
+  });
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+function selectHolding(code, name) {
+  document.getElementById('sell-code').value = code;
+  document.getElementById('sell-name').value = name;
+  document.getElementById('sell-name').placeholder = '输入代码自动填充';
+}
+
+// ========== 渲染交易记录 ==========
+// ========== 交易记录 搜索+筛选 ==========
+var _recFilterVisible = false;
+
+function toggleRecordsFilter() {
+  _recFilterVisible = !_recFilterVisible;
+  var panel = document.getElementById('rec-filter-panel');
+  var btn = document.getElementById('rec-filter-toggle');
+  panel.style.display = _recFilterVisible ? 'block' : 'none';
+  btn.textContent = (_recFilterVisible ? '▲' : '▼') + ' 筛选';
+  if (_recFilterVisible) buildCodeFilterChips();
+}
+
+function buildCodeFilterChips() {
+  var records = loadRecords();
+  var codes = {};
+  records.forEach(function(r) { codes[r.code] = r.name || r.code; });
+  var container = document.getElementById('rec-filter-codes');
+  if (!container) return;
+  // 只在首次（容器为空时）构建
+  if (container.children.length > 0) return;
+  var html = '';
+  Object.keys(codes).sort().forEach(function(code) {
+    html += '<label class="rec-filter-chip"><input type="checkbox" value="' + code + '" onchange="applyRecordsFilter()" checked> ' + code + '</label>';
+  });
+  if (!html) html = '<span style="font-size:12px;color:#bbb;">无数据</span>';
+  container.innerHTML = html;
+}
+
+function resetRecordsFilter() {
+  document.getElementById('rec-search').value = '';
+  document.getElementById('rec-date-from').value = '';
+  document.getElementById('rec-date-to').value = '';
+  // 重置所有 checkbox
+  var panel = document.getElementById('rec-filter-panel');
+  panel.querySelectorAll('input[type=checkbox]').forEach(function(cb) { cb.checked = true; });
+  applyRecordsFilter();
+}
+
+function getRecordsFilterState() {
+  var keyword = (document.getElementById('rec-search').value || '').trim().toLowerCase();
+  var dateFrom = document.getElementById('rec-date-from').value || '';
+  var dateTo = document.getElementById('rec-date-to').value || '';
+
+  // 类型勾选
+  var typeChecks = document.querySelectorAll('#rec-filter-panel input[type=checkbox][value=buy], #rec-filter-panel input[type=checkbox][value=sell]');
+  var allowedTypes = [];
+  typeChecks.forEach(function(cb) { if (cb.checked) allowedTypes.push(cb.value); });
+
+  // 代码勾选
+  var codeChecks = document.querySelectorAll('#rec-filter-codes input[type=checkbox]');
+  var allowedCodes = null; // null = 未初始化（全选）
+  if (codeChecks.length > 0) {
+    allowedCodes = [];
+    codeChecks.forEach(function(cb) { if (cb.checked) allowedCodes.push(cb.value); });
+  }
+
+  // 状态
+  var fcLinked = document.getElementById('fc-linked');
+  var fcUnlinked = document.getElementById('fc-unlinked');
+  var fcBuyall = document.getElementById('fc-buyall');
+
+  return {
+    keyword: keyword,
+    dateFrom: dateFrom,
+    dateTo: dateTo,
+    allowedTypes: allowedTypes,
+    allowedCodes: allowedCodes,
+    showLinked: fcLinked ? fcLinked.checked : true,
+    showUnlinked: fcUnlinked ? fcUnlinked.checked : true,
+    showBuyAll: fcBuyall ? fcBuyall.checked : true
+  };
+}
+
+function applyRecordsFilter() {
+  renderRecords();
+}
+
+function renderRecords() {
+  var records = loadRecords();
+  var container = document.getElementById('records-container');
+
+  if (records.length === 0) {
+    container.innerHTML = '<div class="empty-state">暂无交易记录</div>';
+    document.getElementById('records-count').textContent = '';
+    return;
+  }
+
+  var f = getRecordsFilterState();
+
+  var sorted = records.slice().sort(function(a, b) {
+    return (a.date || '0') < (b.date || '0') ? 1 : -1;
+  });
+
+  // 应用筛选
+  var filtered = sorted.filter(function(rec) {
+    // 关键词
+    if (f.keyword) {
+      var haystack = ((rec.code || '') + ' ' + (rec.name || '') + ' ' + (rec.note || '')).toLowerCase();
+      if (haystack.indexOf(f.keyword) === -1) return false;
+    }
+    // 类型
+    if (f.allowedTypes.indexOf(rec.type) === -1) return false;
+    // 代码
+    if (f.allowedCodes !== null && f.allowedCodes.indexOf(rec.code) === -1) return false;
+    // 日期范围
+    if (f.dateFrom && rec.date && rec.date < f.dateFrom) return false;
+    if (f.dateTo && rec.date && rec.date > f.dateTo) return false;
+    // 状态（仅 sell）
+    if (rec.type === 'sell') {
+      var isLinked = rec.linkedBuys && rec.linkedBuys.length > 0;
+      if (isLinked && !f.showLinked) return false;
+      if (!isLinked && !f.showUnlinked) return false;
+    }
+    if (rec.type === 'buy' && !f.showBuyAll) return false;
+    return true;
+  });
+
+  // 更新计数
+  var countEl = document.getElementById('records-count');
+  if (countEl) countEl.textContent = filtered.length + ' / ' + sorted.length + ' 条';
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="color:#bbb;padding:40px 0;text-align:center;">未找到匹配记录</div>';
+    return;
+  }
+
+  var html = '<table><thead><tr><th>日期</th><th>类型</th><th>代码</th><th>名称</th><th>价格</th><th>数量</th><th>金额</th><th>手续费</th><th>备注</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+
+  filtered.forEach(function(rec) {
+    var typeTag = rec.type === 'buy'
+      ? '<span class="tag tag-buy">买入</span>'
+      : '<span class="tag tag-sell">卖出</span>';
+
+    var statusHtml = '';
+    var actionsHtml = '';
+
+    if (rec.type === 'sell') {
+      if (rec.linkedBuys && rec.linkedBuys.length > 0) {
+        statusHtml = '<span class="tag tag-linked">已关联(' + rec.linkedBuys.reduce(function(s, lb) { return s + lb.quantity; }, 0) + '份)</span>';
+        actionsHtml = '<button class="btn btn-sm btn-outline" onclick="openLinkOverlay(\'' + rec.id + '\')">修改关联</button> ';
+      } else {
+        var hasAvailable = records.some(function(r) {
+          return r.type === 'buy' && r.code === rec.code && r.remaining > 0;
+        });
+        if (hasAvailable) {
+          statusHtml = '<span class="tag tag-warn">待关联</span>';
+          actionsHtml = '<button class="btn btn-sm btn-primary" onclick="openLinkOverlay(\'' + rec.id + '\')">关联买入</button> ';
+        } else {
+          statusHtml = '<span class="tag" style="background:#f0f0f0;color:#999;">无可用批次</span>';
+          actionsHtml = '<button class="btn btn-sm btn-ghost" disabled>不可关联</button> ';
+        }
+      }
+    } else {
+      var avgPrice = (rec.amount + rec.fee) / rec.quantity;
+      if (rec.remaining < rec.quantity) {
+        statusHtml = '<span class="tag tag-blue" onclick="openBuyLinkOverlay(\'' + rec.id + '\')" title="点击查看关联卖出">剩余 ' + rec.remaining + ' 份（共 ' + rec.quantity + ' 份）/ 均价 ' + avgPrice.toFixed(3) + '</span>';
+        actionsHtml += '<button class="btn btn-sm btn-outline" style="margin-left:4px;" onclick="openBuyLinkOverlay(\'' + rec.id + '\')">查看关联</button> ';
+      } else {
+        statusHtml = '<span style="font-size:12px;color:#555;">剩余 ' + rec.remaining + ' 份 / 均价 ' + avgPrice.toFixed(3) + '</span>';
+      }
+    }
+
+    actionsHtml += '<button class="btn btn-sm btn-ghost" onclick="editRecord(\'' + rec.id + '\')">编辑</button> ';
+    actionsHtml += '<button class="btn btn-sm btn-ghost" onclick="deleteRecord(\'' + rec.id + '\')" style="color:#E4393C;">删除</button>';
+
+    html += '<tr>';
+    html += '<td>' + (rec.date || '-') + '</td>';
+    html += '<td>' + typeTag + '</td>';
+    html += '<td>' + rec.code + '</td>';
+    html += '<td>' + rec.name + '</td>';
+    html += '<td>' + rec.price.toFixed(3) + '</td>';
+    html += '<td>' + rec.quantity + '</td>';
+    html += '<td>' + rec.amount.toFixed(2) + '</td>';
+    html += '<td>' + rec.fee.toFixed(2) + '</td>';
+    html += '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (rec.note || '-') + '</td>';
+    html += '<td>' + statusHtml + '</td>';
+    html += '<td style="white-space:nowrap;">' + actionsHtml + '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ========== 盈亏统计 ==========
+
+// 浮盈缓存：code -> { price, time }
+var _floatPriceCache = {};
+
+function parseDateStr(s) {
+  if (!s) return null;
+  var parts = s.split('-');
+  if (parts.length !== 3) return null;
+  return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+}
+
+function renderStats() {
+  var records = loadRecords();
+
+  // 汇总卡片
+  var totalBuyAmount = 0, totalSellAmount = 0, totalBuyFee = 0, totalSellFee = 0, totalRealizedProfit = 0;
+  var totalRealizedCost = 0;   // 已卖出部分的买入含费成本
+  var totalWeightedDays = 0;   // 加权持有天数（cost * days 的累计）
+
+  records.forEach(function(rec) {
+    if (rec.type === 'buy') {
+      totalBuyAmount += rec.amount;
+      totalBuyFee += rec.fee;
+    }
+    if (rec.type === 'sell') {
+      totalSellAmount += rec.amount;
+      totalSellFee += rec.fee;
+      if (rec.linkedBuys && rec.linkedBuys.length > 0) {
+        var sellNetPrice = (rec.amount - rec.fee) / rec.quantity;
+        var sellDate = parseDateStr(rec.date);
+        rec.linkedBuys.forEach(function(lb) {
+          var buy = records.find(function(r) { return r.id === lb.buyId; });
+          if (buy) {
+            var buyCostPrice = (buy.amount + buy.fee) / buy.quantity;
+            var linkCost = buyCostPrice * lb.quantity;
+            var linkProfit = (sellNetPrice - buyCostPrice) * lb.quantity;
+            totalRealizedProfit += linkProfit;
+            totalRealizedCost += linkCost;
+            // 计算持有天数
+            var buyDate = parseDateStr(buy.date);
+            if (sellDate && buyDate) {
+              var days = (sellDate.getTime() - buyDate.getTime()) / (1000 * 60 * 60 * 24);
+              if (days < 1) days = 1;
+              totalWeightedDays += linkCost * days;
+            }
+          }
+        });
+      }
+    }
+  });
+
+  // 计算实际收益率和年化收益率
+  var totalActualRate = totalRealizedCost > 0 ? totalRealizedProfit / totalRealizedCost * 100 : 0;
+  var avgHoldingDays = totalRealizedCost > 0 ? totalWeightedDays / totalRealizedCost : 0;
+  var totalAnnualizedRate = 0;
+  if (totalRealizedCost > 0 && avgHoldingDays > 0) {
+    totalAnnualizedRate = totalActualRate * (365 / avgHoldingDays);
+  }
+  // 年化标签：短期交易（<30天）加注"短期参考"
+  var annualizedLabel = '年化收益率';
+  if (avgHoldingDays > 0 && avgHoldingDays < 30) {
+    annualizedLabel = '年化收益率<span style="font-size:10px;color:#999;display:block;margin-top:2px;">(均持' + avgHoldingDays.toFixed(0) + '天·短期参考)</span>';
+  } else if (avgHoldingDays >= 30) {
+    annualizedLabel = '年化收益率<span style="font-size:10px;color:#999;display:block;margin-top:2px;">(均持' + avgHoldingDays.toFixed(0) + '天)</span>';
+  }
+
+  var cardsHtml = '';
+  cardsHtml += '<div class="stats-card"><div class="label">总手续费</div><div class="value">' + (totalBuyFee + totalSellFee).toFixed(2) + '</div></div>';
+  cardsHtml += '<div class="stats-card"><div class="label">已实现盈亏</div><div class="value ' + (totalRealizedProfit >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (totalRealizedProfit >= 0 ? '+' : '') + totalRealizedProfit.toFixed(2) + '</div><div style="font-size:12px;margin-top:4px;font-weight:600;' + (totalActualRate >= 0 ? 'color:#E4393C;' : 'color:#2E7D32;') + '">' + (totalActualRate >= 0 ? '+' : '') + totalActualRate.toFixed(2) + '%</div></div>';
+  cardsHtml += '<div class="stats-card"><div class="label">' + annualizedLabel + '</div><div class="value-sm ' + (totalAnnualizedRate >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (totalAnnualizedRate >= 0 ? '+' : '') + totalAnnualizedRate.toFixed(2) + '%</div></div>';
+  cardsHtml += '<div class="stats-card" id="card-float-total"><div class="label">浮动盈亏</div><div class="value-sm floating-loading" id="float-total-val">获取中…</div></div>';
+  document.getElementById('stats-cards').innerHTML = cardsHtml;
+
+  // 按 ETF 分组
+  var etfMap = {};
+  records.forEach(function(rec) {
+    var key = rec.code;
+    if (!etfMap[key]) etfMap[key] = { code: rec.code, name: rec.name, buys: [], sells: [], remainingBuys: [] };
+    if (rec.type === 'buy') {
+      etfMap[key].buys.push(rec);
+      if (rec.remaining > 0) etfMap[key].remainingBuys.push(rec);
+    } else {
+      etfMap[key].sells.push(rec);
+    }
+  });
+
+  var etfHtml = '';
+  // 标题行含刷新按钮
+  etfHtml += '<div style="display:flex;align-items:center;margin-bottom:12px;">';
+  etfHtml += '<span style="font-size:14px;font-weight:600;color:#333;">各 ETF 明细</span>';
+  etfHtml += '<button class="refresh-btn" onclick="refreshFloatProfit()">&#8635; 刷新浮盈</button>';
+  etfHtml += '</div>';
+
+  Object.values(etfMap).forEach(function(group) {
+    etfHtml += '<div class="etf-group"><h3>' + group.code + ' ' + group.name + '</h3>';
+
+    var realizedProfit = 0;
+    var realizedCost = 0;        // 已卖出部分的含费成本
+    var weightedDays = 0;        // 加权持有天数累计
+    group.sells.forEach(function(sell) {
+      if (sell.linkedBuys && sell.linkedBuys.length > 0) {
+        var sellNetPrice = (sell.amount - sell.fee) / sell.quantity;
+        var sellDate = parseDateStr(sell.date);
+        sell.linkedBuys.forEach(function(lb) {
+          var buy = records.find(function(r) { return r.id === lb.buyId; });
+          if (buy) {
+            var buyCostPrice = (buy.amount + buy.fee) / buy.quantity;
+            var linkCost = buyCostPrice * lb.quantity;
+            var linkProfit = (sellNetPrice - buyCostPrice) * lb.quantity;
+            realizedProfit += linkProfit;
+            realizedCost += linkCost;
+            var buyDate = parseDateStr(buy.date);
+            if (sellDate && buyDate) {
+              var days = (sellDate.getTime() - buyDate.getTime()) / (1000 * 60 * 60 * 24);
+              if (days < 1) days = 1;
+              weightedDays += linkCost * days;
+            }
+          }
+        });
+      }
+    });
+
+    var actualRate = realizedCost > 0 ? realizedProfit / realizedCost * 100 : 0;
+    var avgDays = realizedCost > 0 ? weightedDays / realizedCost : 0;
+    var annualizedRate = 0;
+    if (realizedCost > 0 && avgDays > 0) {
+      annualizedRate = actualRate * (365 / avgDays);
+    }
+    var hasSold = group.sells.some(function(s) { return s.linkedBuys && s.linkedBuys.length > 0; });
+
+    var totalRemainingQty = 0;
+    var totalRemainingCost = 0;
+    group.remainingBuys.forEach(function(buy) {
+      totalRemainingQty += buy.remaining;
+      totalRemainingCost += (buy.amount + buy.fee) / buy.quantity * buy.remaining;
+    });
+    var avgCost = totalRemainingQty > 0 ? totalRemainingCost / totalRemainingQty : 0;
+
+    etfHtml += '<table><thead><tr><th>已实现盈亏</th><th>实际收益率</th><th>年化收益率</th><th>持仓数量</th><th>持仓均价(含费)</th><th>持仓成本</th></tr></thead><tbody>';
+    etfHtml += '<tr>';
+    etfHtml += '<td class="' + (realizedProfit >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (realizedProfit >= 0 ? '+' : '') + realizedProfit.toFixed(2) + '</td>';
+    etfHtml += '<td class="' + (actualRate >= 0 ? 'profit-positive' : 'profit-negative') + '">' + (hasSold ? ((actualRate >= 0 ? '+' : '') + actualRate.toFixed(2) + '%') : '-') + '</td>';
+    // 年化列：短期交易加注持有天数
+    var annualCell = '-';
+    if (hasSold) {
+      var tag = '';
+      if (avgDays > 0 && avgDays < 30) tag = '<br><span style="font-size:10px;color:#999;">均持' + avgDays.toFixed(0) + '天·短期</span>';
+      else if (avgDays >= 30) tag = '<br><span style="font-size:10px;color:#999;">均持' + avgDays.toFixed(0) + '天</span>';
+      annualCell = (annualizedRate >= 0 ? '+' : '') + annualizedRate.toFixed(2) + '%' + tag;
+    }
+    etfHtml += '<td class="' + (annualizedRate >= 0 ? 'profit-positive' : 'profit-negative') + '">' + annualCell + '</td>';
+    etfHtml += '<td>' + totalRemainingQty + '</td>';
+    etfHtml += '<td>' + (totalRemainingQty > 0 ? avgCost.toFixed(3) : '-') + '</td>';
+    etfHtml += '<td>' + (totalRemainingQty > 0 ? totalRemainingCost.toFixed(2) : '-') + '</td>';
+    etfHtml += '</tr></tbody></table>';
+
+    // 浮动盈亏区块（有持仓才显示）
+    if (totalRemainingQty > 0) {
+      etfHtml += '<div class="floating-row" id="float-row-' + group.code + '">';
+      etfHtml += '<span class="fp-label">现价:</span><span class="fp-val floating-loading" id="float-price-' + group.code + '">获取中…</span>';
+      etfHtml += '<span class="fp-label" style="margin-left:8px;">浮动盈亏:</span><span class="fp-val floating-loading" id="float-profit-' + group.code + '">-</span>';
+      etfHtml += '<span class="fp-label" style="margin-left:8px;">浮动收益率:</span><span class="fp-val floating-loading" id="float-pct-' + group.code + '">-</span>';
+      etfHtml += '</div>';
+    }
+
+    etfHtml += '</div>';
+  });
+
+  if (Object.keys(etfMap).length === 0) {
+    etfHtml = '<div class="empty-state">暂无交易记录</div>';
+  }
+
+  document.getElementById('etf-stats-container').innerHTML = etfHtml;
+
+  // 渲染完毕后自动拉取浮盈
+  fetchAllFloatPrices(etfMap);
+}
+
+// ========== 浮动盈亏获取（JSONP 方式，绕过跨域限制） ==========
+var _floatCallbacks = {};
+var _floatCallbackId = 0;
+
+function fetchAllFloatPrices(etfMap) {
+  var records = loadRecords();
+  var holdingGroups = Object.values(etfMap).filter(function(g) {
+    var qty = 0;
+    g.remainingBuys.forEach(function(b) { qty += b.remaining; });
+    return qty > 0;
+  });
+
+  if (holdingGroups.length === 0) {
+    var el = document.getElementById('float-total-val');
+    if (el) { el.textContent = '-'; el.className = 'value'; }
+    return;
+  }
+
+  var totalFloatProfit = 0;
+  var finishedCount = 0;
+  var successCount = 0;
+  var totalCount = holdingGroups.length;
+
+  holdingGroups.forEach(function(group) {
+    var code = group.code;
+    var totalRemainingQty = 0;
+    var totalRemainingCost = 0;
+    group.remainingBuys.forEach(function(buy) {
+      totalRemainingQty += buy.remaining;
+      totalRemainingCost += (buy.amount + buy.fee) / buy.quantity * buy.remaining;
+    });
+    var avgCost = totalRemainingQty > 0 ? totalRemainingCost / totalRemainingQty : 0;
+
+    // 检查缓存（60秒内有效）
+    var cache = _floatPriceCache[code];
+    if (cache && (Date.now() - cache.time < 60000)) {
+      updateFloatUI(code, cache.price, avgCost, totalRemainingQty, totalRemainingCost);
+      totalFloatProfit += (cache.price - avgCost) * totalRemainingQty;
+      finishedCount++;
+      successCount++;
+      if (finishedCount === totalCount) updateFloatTotal(totalFloatProfit);
+      return;
+    }
+
+    // 使用 JSONP 方式请求，绕过 CORS 限制
+    var cbName = '_floatCb_' + (++_floatCallbackId);
+    var timedOut = false;
+    var scriptEl = null;
+
+    _floatCallbacks[cbName] = function(data) {
+      if (timedOut) return;
+      clearTimeout(tid);
+      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+      delete _floatCallbacks[cbName];
+      window[cbName] = undefined;
+      try { delete window[cbName]; } catch(e) {}
+
+      finishedCount++;
+      if (data && data.data && data.data.f43 !== undefined && data.data.f43 !== '-') {
+        var price = parseFloat(data.data.f43) / 1000;
+        if (!isNaN(price) && price > 0) {
+          _floatPriceCache[code] = { price: price, time: Date.now() };
+          updateFloatUI(code, price, avgCost, totalRemainingQty, totalRemainingCost);
+          totalFloatProfit += (price - avgCost) * totalRemainingQty;
+          successCount++;
+        } else {
+          setFloatUIError(code);
+        }
+      } else {
+        setFloatUIError(code);
+      }
+      if (finishedCount === totalCount) updateFloatTotal(successCount > 0 ? totalFloatProfit : null);
+    };
+
+    // 挂载全局回调
+    window[cbName] = _floatCallbacks[cbName];
+
+    var prefix = getMarketPrefix(code);
+    var url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + prefix + code + '&fields=f43&cb=' + cbName;
+
+    scriptEl = document.createElement('script');
+    scriptEl.src = url;
+    scriptEl.onerror = function() {
+      if (timedOut) return;
+      timedOut = true;
+      if (scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+      delete _floatCallbacks[cbName];
+      window[cbName] = undefined;
+      try { delete window[cbName]; } catch(e) {}
+      finishedCount++;
+      setFloatUIError(code);
+      if (finishedCount === totalCount) updateFloatTotal(successCount > 0 ? totalFloatProfit : null);
+    };
+    document.head.appendChild(scriptEl);
+
+    var tid = setTimeout(function() {
+      if (timedOut) return;
+      timedOut = true;
+      if (scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+      delete _floatCallbacks[cbName];
+      window[cbName] = undefined;
+      try { delete window[cbName]; } catch(e) {}
+      finishedCount++;
+      setFloatUIError(code);
+      if (finishedCount === totalCount) updateFloatTotal(successCount > 0 ? totalFloatProfit : null);
+    }, 5000);
+  });
+}
+
+function updateFloatUI(code, price, avgCost, qty, totalCost) {
+  var priceEl = document.getElementById('float-price-' + code);
+  var profitEl = document.getElementById('float-profit-' + code);
+  var pctEl = document.getElementById('float-pct-' + code);
+  if (!priceEl) return;
+
+  var profit = (price - avgCost) * qty;
+  var pct = totalCost > 0 ? profit / totalCost * 100 : 0;
+
+  priceEl.textContent = price.toFixed(3);
+  priceEl.className = 'fp-val';
+
+  profitEl.textContent = (profit >= 0 ? '+' : '') + profit.toFixed(2) + ' 元';
+  profitEl.className = 'fp-val ' + (profit >= 0 ? 'profit-positive' : 'profit-negative');
+
+  pctEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+  pctEl.className = 'fp-val ' + (pct >= 0 ? 'profit-positive' : 'profit-negative');
+}
+
+function setFloatUIError(code) {
+  var priceEl = document.getElementById('float-price-' + code);
+  var profitEl = document.getElementById('float-profit-' + code);
+  var pctEl = document.getElementById('float-pct-' + code);
+  if (priceEl) priceEl.textContent = '暂无数据';
+  if (profitEl) { profitEl.textContent = '-'; profitEl.className = 'fp-val'; }
+  if (pctEl) { pctEl.textContent = '-'; pctEl.className = 'fp-val'; }
+}
+
+function updateFloatTotal(total) {
+  var el = document.getElementById('float-total-val');
+  if (!el) return;
+  if (total === null) {
+    el.textContent = '获取失败';
+    el.className = 'value-sm';
+    return;
+  }
+  el.textContent = (total >= 0 ? '+' : '') + total.toFixed(2);
+  el.className = 'value-sm ' + (total >= 0 ? 'profit-positive' : 'profit-negative');
+}
+
+function refreshFloatProfit() {
+  // 清空缓存，重新拉取
+  _floatPriceCache = {};
+  renderStats();
+}
+
+// ========== 初始化 ==========
+function refreshAll() {
+  if (document.getElementById('tab-holdings').classList.contains('active')) renderHoldingPanel();
+  if (document.getElementById('tab-records').classList.contains('active')) renderRecords();
+  if (document.getElementById('tab-stats').classList.contains('active')) renderStats();
+}
+
+(function() {
+  var today = new Date();
+  var ds = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  document.getElementById('buy-date').value = ds;
+  document.getElementById('sell-date').value = ds;
+
+  updateFeeDisplay();
+  updateSyncStatusUI();
+
+  // 初始化云同步：3秒后首次拉取 + 启动6小时周期同步
+  initSync();
+
+  // 每分钟刷新同步状态栏倒计时
+  setInterval(updateSyncStatusUI, 60000);
+
+  document.getElementById('link-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeOverlay();
+  });
+  document.getElementById('buy-link-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeBuyOverlay();
+  });
+  document.getElementById('sync-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeSyncPanel();
+  });
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+</script>
+</body>
+</html>
