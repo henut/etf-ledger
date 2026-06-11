@@ -1672,7 +1672,7 @@ function renderHoldingPanel() {
     html += '</div>';
 
     html += '<div style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden;">';
-    html += '<div class="hp-stock-header"><span>名称/代码</span><span>市值/盈亏</span><span>持仓/可用</span><span>成本/现价</span></div>';
+    html += '<div class="hp-stock-header"><span>名称/代码</span><span>盈亏/盈亏%</span><span>持仓/持仓成本</span><span>成本价/现价</span></div>';
 
     codes.forEach(function(code) {
       var e = etfMap[code];
@@ -1686,23 +1686,24 @@ function renderHoldingPanel() {
       html += '<div class="hp-stock-row" onclick="switchTabDirect(\'stats\')">';
       // col1: 名称/代码
       html += '<div><div class="hp-name">' + e.name + '</div><div class="hp-code">' + code + '</div></div>';
-      // col2: 市值/盈亏
+      // col2: 盈亏/盈亏%
       html += '<div>';
-      html += '<div class="hp-mktval">' + (mktVal !== null ? mktVal.toFixed(2) : e.totalCost.toFixed(2) + '*') + '</div>';
       if (pnl !== null) {
-        html += '<div class="hp-pnl-pct ' + pnlColorClass + '">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '<br>' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</div>';
+        html += '<div class="hp-pnl ' + pnlColorClass + '" style="font-size:15px;font-weight:700;">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '</div>';
+        html += '<div class="hp-pnl-pct ' + pnlColorClass + '">' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</div>';
       } else {
-        html += '<div class="hp-pnl-pct hp-loading" id="hp-pnl-' + code + '">获取中…</div>';
+        html += '<div class="hp-pnl hp-loading" id="hp-pnl-' + code + '">—</div>';
+        html += '<div class="hp-pnl-pct hp-loading">获取中…</div>';
       }
       html += '</div>';
-      // col3: 持仓数量（ETF T+0可用 = 当天买当天就能卖，简化为持仓即可用）
-      html += '<div><div class="hp-qty">' + e.totalQty.toLocaleString() + '</div><div class="hp-qty-avail">可用 ' + e.totalQty.toLocaleString() + '</div></div>';
-      // col4: 成本/现价
+      // col3: 持仓/持仓成本
+      html += '<div><div class="hp-qty">' + e.totalQty.toLocaleString() + '</div><div class="hp-qty-avail">成本 ' + e.totalCost.toFixed(2) + '</div></div>';
+      // col4: 成本价/现价
       html += '<div>';
-      html += '<div class="hp-cost">' + e.avgCost.toFixed(3) + '</div>';
+      html += '<div class="hp-cost" style="font-size:13px;color:#555;">' + e.avgCost.toFixed(3) + '</div>';
       if (price > 0) {
         var priceColorClass = price > e.avgCost ? 'hp-pos' : (price < e.avgCost ? 'hp-neg' : 'hp-zero');
-        html += '<div class="hp-nowprice ' + priceColorClass + '" id="hp-nowprice-' + code + '">' + price.toFixed(3) + '</div>';
+        html += '<div class="hp-nowprice ' + priceColorClass + '" id="hp-nowprice-' + code + '" style="font-weight:600;">' + price.toFixed(3) + '</div>';
       } else {
         html += '<div class="hp-nowprice hp-loading" id="hp-nowprice-' + code + '">获取中…</div>';
       }
