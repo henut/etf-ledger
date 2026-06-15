@@ -555,6 +555,30 @@ function showToast(msg) {
 var SYNC_CONFIG_KEY = 'etf_sync_config';
 var _syncDebounceTimer = null;
 var _syncInProgress = false;
+var _syncLockTime = 0; // 锁定时间戳，用于超时检测
+
+// 安全锁：超过 30 秒自动释放，防止卡死
+function isSyncLocked() {
+  if (!_syncInProgress) return false;
+  if (Date.now() - _syncLockTime > 30000) {
+    releaseSyncLock(); // 超时自动释放
+    console.warn('[sync] 锁超时 30s，已自动释放');
+    return false;
+  }
+  return true;
+}
+
+function acquireSyncLock() {
+  if (isSyncLocked()) return false;
+  _syncInProgress = true;
+  _syncLockTime = Date.now();
+  return true;
+}
+
+function releaseSyncLock() {
+  _syncInProgress = false;
+  _syncLockTime = 0;
+}
 
 function loadSyncConfig() {
   try { return JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)) || {}; }
@@ -634,8 +658,8 @@ function cloudPush() {
     showToast('请先填写 GitHub Token');
     return;
   }
-  if (_syncInProgress) return;
-  _syncInProgress = true;
+  if (isSyncLocked()) return;
+  if (!acquireSyncLock()) return;
 
   // 推送前先拉取云端，合并后再推（防止覆盖其他设备的记录）
   var gistId = cfg.gistId;
@@ -665,23 +689,19 @@ function cloudPush() {
             var cloudNameMap = data.nameMap || {};
             var cloudFeeConfig = data.feeConfig || null;
 
-            // 合并记录：先按 ID 去重，再按内容去重（防止两端 ID 格式不同导致重复）
-            var recordMap = {};
-            var contentKeyMap = {};
-            // 先放云端记录
-            cloudRecords.forEach(function(r) {
-              if (r.id) recordMap[r.id] = r;
-              var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
-              contentKeyMap[ck] = r;
-            });
-            // 再放本地记录（本地优先：覆盖云端同一 ID 或同一内容的记录）
+            // 合并记录：以本地为准！本地没有的记录，即使云端有也不保留
+            // 这解决了"本地删了记录但云端残留导致删除无效"的问题
+            var localIdSet = new Set();
+            var localContentKeySet = new Set();
             localRecords.forEach(function(r) {
-              if (r.id) recordMap[r.id] = r;
+              if (r.id) localIdSet.add(r.id);
               var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
-              contentKeyMap[ck] = r; // 本地优先
+              localContentKeySet.add(ck);
             });
-            // 用 contentKeyMap 生成最终合并结果（内容去重）
-            var mergedRecords = Object.values(contentKeyMap);
+
+            // 最终结果 = 本地记录 + 云端中与本地匹配的记录（取本地版本）
+            // 云端独有但本地已删除的记录 → 丢弃
+            var mergedRecords = localRecords.slice(); // 以本地为准
 
             // nameMap 合并：本地优先
             var mergedNameMap = Object.assign({}, cloudNameMap, localNameMap);
@@ -694,7 +714,7 @@ function cloudPush() {
             if (mergedFeeConfig) saveFeeConfig(mergedFeeConfig);
             updateFeeDisplay();
 
-            // 用合并后的数据推送
+            // 用合并后的数据推送（只有本地记录）
             doPush(cfg, mergedRecords, mergedNameMap, mergedFeeConfig, gistId);
             return;
           } catch(e) { /* 解析失败，直接推本地 */ }
@@ -733,7 +753,7 @@ function cloudForcePush() {
   var localRecords = loadRecords();
   if (!confirm('⚠️ 强制推送将用本地 ' + localRecords.length + ' 条记录完全覆盖云端数据！\n\n此操作不可撤销，确定继续？')) return;
 
-  _syncInProgress = true;
+  if (!acquireSyncLock()) return;
   var localNameMap = loadNameMap();
   var localFeeConfig = loadFeeConfig();
   doPush(cfg, localRecords, localNameMap, localFeeConfig, cfg.gistId);
@@ -794,12 +814,12 @@ function doPush(cfg, records, nameMap, feeConfig, gistId) {
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
     updateSyncStatusUI();
-    _syncInProgress = false;
+    releaseSyncLock();
   })
   .catch(function(err) {
     showSyncError(err.message);
     showToast('推送失败: ' + err.message);
-    _syncInProgress = false;
+    releaseSyncLock();
   });
 }
 
@@ -808,7 +828,7 @@ var SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 var _periodicSyncTimer = null;
 
 function periodicSync() {
-  if (_syncInProgress) return;
+  if (isSyncLocked()) return;
   cloudPush();
 }
 
@@ -823,11 +843,11 @@ function cloudPull() {
     showToast('请先推送一次以创建 Gist');
     return;
   }
-  if (_syncInProgress) {
+  if (isSyncLocked()) {
     showToast('同步进行中，请稍候...');
     return;
   }
-  _syncInProgress = true;
+  if (!acquireSyncLock()) return;
 
   showToast('正在拉取...');
   fetch('https://api.github.com/gists/' + cfg.gistId, {
@@ -857,24 +877,14 @@ function cloudPull() {
       feeConfig = data.feeConfig || null;
     }
 
-    // 合并云端和本地记录（按 ID + 内容去重）
+    // 合并云端和本地记录：以本地为准！本地没有的记录，即使云端有也不保留
     var localRecords = loadRecords();
-    var contentKeyMap = {};
+    var localIdSet = new Set();
+    localRecords.forEach(function(r) { if (r.id) localIdSet.add(r.id); });
 
-    // 先放云端记录
-    records.forEach(function(r) {
-      if (r.id) contentKeyMap[r.id] = r;
-      var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
-      contentKeyMap['ck_' + ck] = r;
-    });
-    // 再放本地记录（本地优先）
-    localRecords.forEach(function(r) {
-      if (r.id && !contentKeyMap[r.id]) contentKeyMap[r.id] = r;
-      var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
-      contentKeyMap['ck_' + ck] = r; // 本地优先
-    });
-
-    var mergedRecords = Object.values(contentKeyMap);
+    // 只保留云端中与本地 ID 匹配的记录（取本地版本），加上本地独有记录
+    // 云端独有但本地已删除的 → 丢弃
+    var mergedRecords = localRecords.slice(); // 以本地为准
 
     // nameMap 合并：本地优先
     var existingMap = loadNameMap();
@@ -889,11 +899,11 @@ function cloudPull() {
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
     updateSyncStatusUI();
-    _syncInProgress = false;
+    releaseSyncLock();
     showToast('✓ 拉取成功！已用云端 ' + records.length + ' 条记录覆盖本地');
   })
   .catch(function(err) {
-    _syncInProgress = false;
+    releaseSyncLock();
     showSyncError(err.message);
     showToast('拉取失败: ' + err.message);
   });
@@ -901,7 +911,7 @@ function cloudPull() {
 
 // 数据变更后自动同步（防抖 5 秒，拉取+推送）
 function autoSyncDebounced() {
-  if (_syncInProgress) return;
+  if (isSyncLocked()) return;
   var cfg = loadSyncConfig();
   if (!cfg.token || !cfg.gistId) return;
   clearTimeout(_syncDebounceTimer);
@@ -910,7 +920,7 @@ function autoSyncDebounced() {
 
 // 6 小时周期同步（直接调用 cloudPush，内含拉取合并推送完整逻辑）
 function periodicSync() {
-  if (_syncInProgress) return;
+  if (isSyncLocked()) return;
   cloudPush();
 }
 
@@ -938,7 +948,7 @@ function initSync() {
   if (!cfg.token || !cfg.gistId) return;
 
   // 首次加载先拉取一次
-  setTimeout(tryAutoPull, 3000);
+  setTimeout(cloudPull, 3000);
   // 启动6小时周期
   startPeriodicSync();
 }
