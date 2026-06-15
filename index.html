@@ -397,7 +397,8 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
       <div class="hint">首次使用直接留空即可；多设备同步时，在第二台设备填入同一个 Gist ID</div>
     </div>
     <div class="sync-btn-row">
-      <button class="btn btn-primary" onclick="cloudPush()">&#9650; 推送到云端</button>
+      <button class="btn btn-primary" onclick="cloudPush()">&#9660; 推送到云端</button>
+      <button class="btn btn-warning" onclick="cloudForcePush()" style="background:#fff3e0;border-color:#ff9800;color:#e65100;">⚠ 强制推送（覆盖云端）</button>
       <button class="btn btn-outline" onclick="cloudPull()">&#9660; 从云端拉取</button>
       <button class="btn btn-ghost" onclick="saveSyncConfig()">保存设置</button>
     </div>
@@ -704,6 +705,27 @@ function cloudPush() {
     var localFeeConfig = loadFeeConfig();
     doPush(cfg, localRecords, localNameMap, localFeeConfig, null);
   }
+}
+
+// 强制推送：直接用本地记录覆盖云端（不清空merge，不做拉取）
+function cloudForcePush() {
+  var cfg = loadSyncConfig();
+  if (!cfg.token) {
+    showToast('请先填写 GitHub Token');
+    return;
+  }
+  if (!cfg.gistId) {
+    showToast('请先正常推送一次以创建 Gist ID');
+    return;
+  }
+  var localRecords = loadRecords();
+  if (!confirm('⚠️ 强制推送将用本地 ' + localRecords.length + ' 条记录完全覆盖云端数据！\n\n此操作不可撤销，确定继续？')) return;
+
+  _syncInProgress = true;
+  var localNameMap = loadNameMap();
+  var localFeeConfig = loadFeeConfig();
+  doPush(cfg, localRecords, localNameMap, localFeeConfig, cfg.gistId);
+  showToast('⚠️ 强制推送中...');
 }
 
 // 实际执行推送的内部函数
