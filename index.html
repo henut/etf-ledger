@@ -400,6 +400,7 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
       <button class="btn btn-primary" onclick="cloudPush()">&#9660; 推送到云端</button>
       <button class="btn btn-warning" onclick="cloudForcePush()" style="background:#fff3e0;border-color:#ff9800;color:#e65100;">⚠ 强制推送（覆盖云端）</button>
       <button class="btn btn-outline" onclick="cloudPull()">&#9660; 从云端拉取</button>
+      <button class="btn btn-ghost" onclick="diagnoseSync()">🔍 诊断连接</button>
       <button class="btn btn-ghost" onclick="saveSyncConfig()">保存设置</button>
     </div>
     <div class="sync-info-row" id="sync-info"></div>
@@ -420,9 +421,10 @@ function loadRecords() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
   catch(e) { return []; }
 }
+var _saveRecordsLock = false; // 拉取时阻止 autoSync
 function saveRecords(records) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-  autoSyncDebounced();
+  if (!_saveRecordsLock) autoSyncDebounced();
 }
 function loadNameMap() {
   try { return JSON.parse(localStorage.getItem(MAP_KEY)) || {}; }
@@ -664,6 +666,7 @@ function cloudPush() {
   var localRecords = loadRecords();
   var localNameMap = loadNameMap();
   var localFeeConfig = loadFeeConfig();
+  console.log('[cloudPush] 开始推送, 本地记录数:', localRecords.length, 'gistId:', cfg.gistId || '(新建)');
   doPush(cfg, localRecords, localNameMap, localFeeConfig, cfg.gistId);
 }
 
@@ -725,10 +728,12 @@ function doPush(cfg, records, nameMap, feeConfig, gistId) {
     body: JSON.stringify(body)
   })
   .then(function(res) {
+    console.log('[doPush] HTTP status:', res.status, 'method:', method);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   })
   .then(function(result) {
+    console.log('[doPush] 推送成功, gistId:', result.id || gistId, 'records pushed:', records.length);
     if (!gistId && result.id) {
       cfg.gistId = result.id;
       localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
@@ -778,6 +783,7 @@ function cloudPull() {
   if (!acquireSyncLock()) return;
 
   showToast('正在拉取...');
+  console.log('[cloudPull] 开始拉取, gistId:', cfg.gistId, 'token:', cfg.token ? cfg.token.slice(0,6) + '...' : 'EMPTY');
   fetch('https://api.github.com/gists/' + cfg.gistId, {
     headers: {
       'Authorization': 'token ' + cfg.token,
@@ -785,6 +791,7 @@ function cloudPull() {
     }
   })
   .then(function(res) {
+    console.log('[cloudPull] HTTP status:', res.status);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   })
@@ -793,6 +800,7 @@ function cloudPull() {
     if (!file || !file.content) throw new Error('Gist 中无同步数据');
 
     var data = JSON.parse(file.content);
+    console.log('[cloudPull] 云端数据解析成功, records count:', (data.records || data || []).length);
     var records, nameMap, feeConfig;
 
     if (Array.isArray(data)) {
@@ -806,11 +814,14 @@ function cloudPull() {
     }
 
     // 直接用云端数据覆盖本地（完全覆盖策略）
+    _saveRecordsLock = true; // 阻止 saveRecords 触发 autoSync
     saveRecords(records);
+    _saveRecordsLock = false;
     saveNameMap(nameMap);
     if (feeConfig) saveFeeConfig(feeConfig);
 
     refreshAll();
+    console.log('[cloudPull] 拉取完成, 本地记录数:', loadRecords().length);
 
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
@@ -822,6 +833,61 @@ function cloudPull() {
     releaseSyncLock();
     showSyncError(err.message);
     showToast('拉取失败: ' + err.message);
+  });
+}
+
+// 诊断同步连接
+function diagnoseSync() {
+  var cfg = loadSyncConfig();
+  var results = [];
+  results.push('Token: ' + (cfg.token ? '✅ 已填 (' + cfg.token.slice(0,6) + '...)' : '❌ 未填'));
+  results.push('Gist ID: ' + (cfg.gistId || '❌ 未填'));
+  results.push('本地记录数: ' + loadRecords().length);
+
+  if (!cfg.token || !cfg.gistId) {
+    alert('诊断结果：\n\n' + results.join('\n') + '\n\n⚠️ Token 或 Gist ID 缺失，无法连接云端');
+    return;
+  }
+
+  // 测试 Token 有效性
+  fetch('https://api.github.com/user', {
+    headers: { 'Authorization': 'token ' + cfg.token }
+  })
+  .then(function(r) {
+    if (!r.ok) throw new Error('Token 无效 (HTTP ' + r.status + ')');
+    return r.json();
+  })
+  .then(function(user) {
+    results.push('Token 用户: ✅ ' + user.login);
+
+    // 测试 Gist 访问
+    return fetch('https://api.github.com/gists/' + cfg.gistId, {
+      headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.v3+json' }
+    }).then(function(r) {
+      if (!r.ok) throw new Error('Gist 访问失败 (HTTP ' + r.status + ')');
+      return r.json();
+    });
+  })
+  .then(function(gist) {
+    results.push('Gist 访问: ✅');
+    results.push('Gist 所有者: ' + (gist.owner ? gist.owner.login : '未知'));
+    var file = gist.files && gist.files['etf-ledger-sync.json'];
+    if (file && file.content) {
+      try {
+        var data = JSON.parse(file.content);
+        var recCount = Array.isArray(data) ? data.length : (data.records || []).length;
+        results.push('云端记录数: ' + recCount);
+      } catch(e) {
+        results.push('云端数据: ❌ 解析失败');
+      }
+    } else {
+      results.push('云端数据: ❌ 无同步文件');
+    }
+    alert('诊断结果：\n\n' + results.join('\n'));
+  })
+  .catch(function(err) {
+    results.push('❌ 错误: ' + err.message);
+    alert('诊断结果：\n\n' + results.join('\n'));
   });
 }
 
