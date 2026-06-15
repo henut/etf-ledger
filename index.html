@@ -1922,7 +1922,7 @@ function buildCodeFilterChips() {
   records.forEach(function(r) { codes[r.code] = r.name || r.code; });
   var container = document.getElementById('rec-filter-codes');
   if (!container) return;
-  // 只在首次（容器为空时）构建
+  // 只在首次（容器为空时）构建 
   if (container.children.length > 0) return;
   var html = '';
   Object.keys(codes).sort().forEach(function(code) {
