@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#E4393C">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>ETF 交易记账</title>
+<title>ETF交易记账</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f5; color: #333; min-height: 100vh; }
@@ -316,10 +316,6 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
           style="padding:7px 12px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;font-size:12px;cursor:pointer;color:#E4393C;white-space:nowrap;">
           重置
         </button>
-        <button onclick="clearAllRecords()"
-          style="padding:7px 12px;border:1px solid #FFCDD2;border-radius:8px;background:#FFF5F5;font-size:12px;cursor:pointer;color:#E4393C;white-space:nowrap;">
-          清除全部
-        </button>
       </div>
       <!-- 筛选面板（Excel风格下拉） -->
       <div id="rec-filter-panel" style="display:none;background:#fafafa;border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
@@ -553,7 +549,6 @@ function showToast(msg) {
 // ========== GitHub Gist 云同步 ==========
 var SYNC_CONFIG_KEY = 'etf_sync_config';
 var _syncDebounceTimer = null;
-var _syncInProgress = false;
 
 function loadSyncConfig() {
   try { return JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)) || {}; }
@@ -633,90 +628,17 @@ function cloudPush() {
     showToast('请先填写 GitHub Token');
     return;
   }
-  if (_syncInProgress) return;
-  _syncInProgress = true;
 
-  // 推送前先拉取云端，合并后再推（防止覆盖其他设备的记录）
-  var gistId = cfg.gistId;
-  if (gistId) {
-    showToast('正在合并云端数据...');
-    fetch('https://api.github.com/gists/' + gistId, {
-      headers: {
-        'Authorization': 'token ' + cfg.token,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    })
-    .then(function(res) {
-      if (!res.ok) return null; // 忽略拉取错误，直接推本地
-      return res.json();
-    })
-    .then(function(gist) {
-      var localRecords = loadRecords();
-      var localNameMap = loadNameMap();
-      var localFeeConfig = loadFeeConfig();
-
-      if (gist) {
-        var file = gist.files && gist.files['etf-ledger-sync.json'];
-        if (file && file.content) {
-          try {
-            var data = JSON.parse(file.content);
-            var cloudRecords = Array.isArray(data) ? data : (data.records || []);
-            var cloudNameMap = data.nameMap || {};
-            var cloudFeeConfig = data.feeConfig || null;
-
-            // 合并记录：以 ID 为 key，本地和云端都保留（云端有则覆盖本地）
-            var recordMap = {};
-            cloudRecords.forEach(function(r) { if (r.id) recordMap[r.id] = r; });
-            localRecords.forEach(function(r) { if (r.id) recordMap[r.id] = r; }); // 本地优先（含最新关联状态）
-            var mergedRecords = Object.values(recordMap);
-
-            // nameMap 合并：本地优先
-            var mergedNameMap = Object.assign({}, cloudNameMap, localNameMap);
-
-            // feeConfig：本地有则用本地
-            var mergedFeeConfig = localFeeConfig || cloudFeeConfig;
-
-            saveRecords(mergedRecords);
-            saveNameMap(mergedNameMap);
-            if (mergedFeeConfig) saveFeeConfig(mergedFeeConfig);
-            updateFeeDisplay();
-
-            // 用合并后的数据推送
-            doPush(cfg, mergedRecords, mergedNameMap, mergedFeeConfig, gistId);
-            return;
-          } catch(e) { /* 解析失败，直接推本地 */ }
-        }
-      }
-      // 无法拉取云端，直接推本地
-      doPush(cfg, localRecords, localNameMap, localFeeConfig, gistId);
-    })
-    .catch(function() {
-      // 拉取失败，直接推本地
-      var localRecords = loadRecords();
-      var localNameMap = loadNameMap();
-      var localFeeConfig = loadFeeConfig();
-      doPush(cfg, localRecords, localNameMap, localFeeConfig, gistId);
-    });
-  } else {
-    // 首次推送（无 gistId），直接推
-    var localRecords = loadRecords();
-    var localNameMap = loadNameMap();
-    var localFeeConfig = loadFeeConfig();
-    doPush(cfg, localRecords, localNameMap, localFeeConfig, null);
-  }
-}
-
-// 实际执行推送的内部函数
-function doPush(cfg, records, nameMap, feeConfig, gistId) {
   var data = {
     version: 1,
     exportTime: new Date().toISOString(),
-    records: records,
-    nameMap: nameMap,
-    feeConfig: feeConfig
+    records: loadRecords(),
+    nameMap: loadNameMap(),
+    feeConfig: loadFeeConfig()
   };
   var jsonStr = JSON.stringify(data);
 
+  var gistId = cfg.gistId;
   var method = gistId ? 'PATCH' : 'POST';
   var url = gistId
     ? 'https://api.github.com/gists/' + gistId
@@ -747,11 +669,11 @@ function doPush(cfg, records, nameMap, feeConfig, gistId) {
     return res.json();
   })
   .then(function(result) {
+    // 保存 Gist ID（首次创建时）
     if (!gistId && result.id) {
       cfg.gistId = result.id;
       localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
-      var el = document.getElementById('sync-gist-id');
-      if (el) el.value = result.id;
+      document.getElementById('sync-gist-id').value = result.id;
       updateSyncInfo();
       showToast('✓ 推送成功！Gist ID: ' + result.id);
     } else {
@@ -760,22 +682,11 @@ function doPush(cfg, records, nameMap, feeConfig, gistId) {
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
     updateSyncStatusUI();
-    _syncInProgress = false;
   })
   .catch(function(err) {
     showSyncError(err.message);
     showToast('推送失败: ' + err.message);
-    _syncInProgress = false;
   });
-}
-
-// 6 小时周期同步（cloudPush 内含拉取+合并+推送完整逻辑）
-var SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
-var _periodicSyncTimer = null;
-
-function periodicSync() {
-  if (_syncInProgress) return;
-  cloudPush();
 }
 
 // 从 GitHub Gist 拉取数据
@@ -789,11 +700,6 @@ function cloudPull() {
     showToast('请先推送一次以创建 Gist');
     return;
   }
-  if (_syncInProgress) {
-    showToast('同步进行中，请稍候...');
-    return;
-  }
-  _syncInProgress = true;
 
   showToast('正在拉取...');
   fetch('https://api.github.com/gists/' + cfg.gistId, {
@@ -823,10 +729,17 @@ function cloudPull() {
       feeConfig = data.feeConfig || null;
     }
 
-    // 完全用云端数据覆盖本地（云端为唯一真相源）
+    // 合并：本地有则保留，远程新增则追加
+    var existing = loadRecords();
+    var existingIds = new Set(existing.map(function(r){ return r.id; }));
+    var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
+    var mergedRecords = existing.concat(newRecords);
+
+    // 同步名称映射
     var existingMap = loadNameMap();
     Object.assign(existingMap, nameMap);
-    saveRecords(records);
+
+    saveRecords(mergedRecords);
     saveNameMap(existingMap);
     if (feeConfig) saveFeeConfig(feeConfig);
 
@@ -836,29 +749,69 @@ function cloudPull() {
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
     updateSyncStatusUI();
-    _syncInProgress = false;
-    showToast('✓ 拉取成功！已用云端 ' + records.length + ' 条记录覆盖本地');
+    showToast('✓ 拉取成功！新增 ' + newRecords.length + ' 条');
   })
   .catch(function(err) {
-    _syncInProgress = false;
     showSyncError(err.message);
     showToast('拉取失败: ' + err.message);
   });
 }
 
-// 数据变更后自动同步（防抖 5 秒，拉取+推送）
+// 数据变更后自动推送（防抖 5 秒，仅推送不拉取）
 function autoSyncDebounced() {
-  if (_syncInProgress) return;
   var cfg = loadSyncConfig();
-  if (!cfg.token || !cfg.gistId) return;
+  if (!cfg.token) return;
   clearTimeout(_syncDebounceTimer);
-  _syncDebounceTimer = setTimeout(periodicSync, 5000);
+  _syncDebounceTimer = setTimeout(function() {
+    cloudPush();
+  }, 5000);
 }
 
-// 6 小时周期同步（直接调用 cloudPush，内含拉取合并推送完整逻辑）
+// 6 小时周期同步（拉取+推送）
+var SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6小时
+var _periodicSyncTimer = null;
+
 function periodicSync() {
-  if (_syncInProgress) return;
-  cloudPush();
+  var cfg = loadSyncConfig();
+  if (!cfg.token || !cfg.gistId) return;
+
+  // 先拉取云端数据合并，再推送本地最新
+  fetch('https://api.github.com/gists/' + cfg.gistId, {
+    headers: {
+      'Authorization': 'token ' + cfg.token,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  })
+  .then(function(res) { if (!res.ok) throw new Error(''); return res.json(); })
+  .then(function(gist) {
+    var file = gist.files && gist.files['etf-ledger-sync.json'];
+    if (!file || !file.content) { cloudPush(); return; }
+    var data = JSON.parse(file.content);
+    var records = Array.isArray(data) ? data : (data.records || []);
+    var existing = loadRecords();
+    var existingIds = new Set(existing.map(function(r){ return r.id; }));
+    var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
+
+    if (newRecords.length > 0) {
+      var mergedRecords = existing.concat(newRecords);
+      if (data.nameMap) {
+        var existingMap = loadNameMap();
+        Object.assign(existingMap, data.nameMap);
+        saveNameMap(existingMap);
+      }
+      if (data.feeConfig) saveFeeConfig(data.feeConfig);
+      saveRecords(mergedRecords);
+      updateFeeDisplay();
+      refreshAll();
+      showToast('☁ 自动同步：拉取 ' + newRecords.length + ' 条新数据');
+    }
+    // 拉取完成后推送本地最新
+    cloudPush();
+  })
+  .catch(function() {
+    // 拉取失败也尝试推送
+    cloudPush();
+  });
 }
 
 // 启动周期同步
@@ -1778,9 +1731,9 @@ function renderHoldingPanel() {
       var cached = priceMap && priceMap[code];
       var price = cached && cached.price ? cached.price : 0;
       var mktVal = price > 0 ? price * e.totalQty : null;
-      // 浮动盈亏基于含费摊薄成本价（avgCost）
-      var pnl = (mktVal !== null) ? mktVal - e.totalCost : null;
-      var pnlPct = (pnl !== null && e.totalCost > 0) ? pnl / e.totalCost * 100 : null;
+      // 浮动盈亏基于究极成本（已扣除已实现利润）
+      var pnl = (mktVal !== null) ? mktVal - e.ultimateCost : null;
+      var pnlPct = (pnl !== null && e.ultimateCost > 0) ? pnl / e.ultimateCost * 100 : (pnl !== null && e.ultimateCost < 0 ? pnl / Math.abs(e.ultimateCost) * 100 : null);
       var pnlColorClass = pnl === null ? 'hp-loading' : (pnl > 0 ? 'hp-pos' : (pnl < 0 ? 'hp-neg' : 'hp-zero'));
 
       // 主行：点击展开/折叠批次明细
@@ -1969,7 +1922,7 @@ function buildCodeFilterChips() {
   records.forEach(function(r) { codes[r.code] = r.name || r.code; });
   var container = document.getElementById('rec-filter-codes');
   if (!container) return;
-  // 只在首次（容器为空时）构建
+  // 只在首次（容器为空时）构建 
   if (container.children.length > 0) return;
   var html = '';
   Object.keys(codes).sort().forEach(function(code) {
@@ -2025,23 +1978,6 @@ function getRecordsFilterState() {
 }
 
 function applyRecordsFilter() {
-  renderRecords();
-}
-
-// ========== 清除全部记录 ==========
-function clearAllRecords() {
-  var records = loadRecords();
-  if (records.length === 0) {
-    showToast('暂无记录可清除');
-    return;
-  }
-  var buyCount = records.filter(function(r) { return r.type === 'buy'; }).length;
-  var sellCount = records.filter(function(r) { return r.type === 'sell'; }).length;
-  var msg = '确定清除全部交易记录？\n\n共 ' + records.length + ' 条记录（买入 ' + buyCount + ' 条，卖出 ' + sellCount + ' 条）\n\n此操作不可撤销！';
-  if (!confirm(msg)) return;
-  saveRecords([]);
-  localStorage.removeItem(MAP_KEY);
-  showToast('已清除全部记录');
   renderRecords();
 }
 
@@ -2154,7 +2090,7 @@ function renderRecords() {
 
 // ========== 盈亏统计 ==========
 
-// 浮盈缓存：code -> { price, time }
+//  浮盈缓存：code ->  { price, time }
 var _floatPriceCache = {};
 
 function parseDateStr(s) {
