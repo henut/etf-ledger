@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#E4393C">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>ETF交易记账</title>
+<title>ETF 交易记账</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f5; color: #333; min-height: 100vh; }
@@ -315,6 +315,10 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
         <button onclick="resetRecordsFilter()"
           style="padding:7px 12px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;font-size:12px;cursor:pointer;color:#E4393C;white-space:nowrap;">
           重置
+        </button>
+        <button onclick="clearAllRecords()"
+          style="padding:7px 12px;border:1px solid #FFCDD2;border-radius:8px;background:#FFF5F5;font-size:12px;cursor:pointer;color:#E4393C;white-space:nowrap;">
+          清除全部
         </button>
       </div>
       <!-- 筛选面板（Excel风格下拉） -->
@@ -729,11 +733,21 @@ function cloudPull() {
       feeConfig = data.feeConfig || null;
     }
 
-    // 合并：本地有则保留，远程新增则追加
+    // 合并策略：以云端为准，云端有则替换本地（含关联状态），云端没有的本地记录保留
+    var gistIds = new Set();
+    records.forEach(function(r) { if (r.id) gistIds.add(r.id); });
     var existing = loadRecords();
-    var existingIds = new Set(existing.map(function(r){ return r.id; }));
-    var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
-    var mergedRecords = existing.concat(newRecords);
+    var mergedRecords = [];
+    // 先放云端记录（云端为准，关联状态等变更会覆盖本地）
+    records.forEach(function(r) {
+      if (r.id) mergedRecords.push(r);
+    });
+    // 再放仅本地记录（未推送到云端，云端没有的）
+    existing.forEach(function(r) {
+      if (r.id && !gistIds.has(r.id)) {
+        mergedRecords.push(r);
+      }
+    });
 
     // 同步名称映射
     var existingMap = loadNameMap();
@@ -749,7 +763,10 @@ function cloudPull() {
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
     updateSyncStatusUI();
-    showToast('✓ 拉取成功！新增 ' + newRecords.length + ' 条');
+    var localOnly = mergedRecords.length - records.length;
+    var msg = '✓ 拉取成功！云端 ' + records.length + ' 条';
+    if (localOnly > 0) msg += '，保留本地 ' + localOnly + ' 条';
+    showToast(msg);
   })
   .catch(function(err) {
     showSyncError(err.message);
@@ -757,14 +774,12 @@ function cloudPull() {
   });
 }
 
-// 数据变更后自动推送（防抖 5 秒，仅推送不拉取）
+// 数据变更后自动同步（防抖 5 秒，拉取+推送）
 function autoSyncDebounced() {
   var cfg = loadSyncConfig();
-  if (!cfg.token) return;
+  if (!cfg.token || !cfg.gistId) return;
   clearTimeout(_syncDebounceTimer);
-  _syncDebounceTimer = setTimeout(function() {
-    cloudPush();
-  }, 5000);
+  _syncDebounceTimer = setTimeout(periodicSync, 5000);
 }
 
 // 6 小时周期同步（拉取+推送）
@@ -788,24 +803,39 @@ function periodicSync() {
     if (!file || !file.content) { cloudPush(); return; }
     var data = JSON.parse(file.content);
     var records = Array.isArray(data) ? data : (data.records || []);
-    var existing = loadRecords();
-    var existingIds = new Set(existing.map(function(r){ return r.id; }));
-    var newRecords = records.filter(function(r){ return r.id && !existingIds.has(r.id); });
 
-    if (newRecords.length > 0) {
-      var mergedRecords = existing.concat(newRecords);
-      if (data.nameMap) {
-        var existingMap = loadNameMap();
-        Object.assign(existingMap, data.nameMap);
-        saveNameMap(existingMap);
+    // 合并策略：以云端为准，云端有则替换本地（含关联状态），云端没有的本地记录保留
+    var gistIds = new Set();
+    records.forEach(function(r) { if (r.id) gistIds.add(r.id); });
+    var existing = loadRecords();
+    var mergedRecords = [];
+    // 先放云端记录（云端为准，关联状态等变更会覆盖本地）
+    records.forEach(function(r) {
+      if (r.id) mergedRecords.push(r);
+    });
+    // 再放仅本地记录（未推送到云端，云端没有的）
+    existing.forEach(function(r) {
+      if (r.id && !gistIds.has(r.id)) {
+        mergedRecords.push(r);
       }
-      if (data.feeConfig) saveFeeConfig(data.feeConfig);
-      saveRecords(mergedRecords);
-      updateFeeDisplay();
-      refreshAll();
-      showToast('☁ 自动同步：拉取 ' + newRecords.length + ' 条新数据');
+    });
+
+    // 保存合并后的记录
+    saveRecords(mergedRecords);
+
+    // 更新 nameMap 和 feeConfig
+    if (data.nameMap) {
+      var existingMap = loadNameMap();
+      Object.assign(existingMap, data.nameMap);
+      saveNameMap(existingMap);
     }
-    // 拉取完成后推送本地最新
+    if (data.feeConfig) saveFeeConfig(data.feeConfig);
+
+    updateFeeDisplay();
+    refreshAll();
+    showToast('☁ 自动同步：' + records.length + ' 条云端记录已合并');
+
+    // 拉取完成后推送本地最新（含仅本地的记录）
     cloudPush();
   })
   .catch(function() {
@@ -1731,9 +1761,9 @@ function renderHoldingPanel() {
       var cached = priceMap && priceMap[code];
       var price = cached && cached.price ? cached.price : 0;
       var mktVal = price > 0 ? price * e.totalQty : null;
-      // 浮动盈亏基于究极成本（已扣除已实现利润）
-      var pnl = (mktVal !== null) ? mktVal - e.ultimateCost : null;
-      var pnlPct = (pnl !== null && e.ultimateCost > 0) ? pnl / e.ultimateCost * 100 : (pnl !== null && e.ultimateCost < 0 ? pnl / Math.abs(e.ultimateCost) * 100 : null);
+      // 浮动盈亏基于含费摊薄成本价（avgCost）
+      var pnl = (mktVal !== null) ? mktVal - e.totalCost : null;
+      var pnlPct = (pnl !== null && e.totalCost > 0) ? pnl / e.totalCost * 100 : null;
       var pnlColorClass = pnl === null ? 'hp-loading' : (pnl > 0 ? 'hp-pos' : (pnl < 0 ? 'hp-neg' : 'hp-zero'));
 
       // 主行：点击展开/折叠批次明细
@@ -1922,7 +1952,7 @@ function buildCodeFilterChips() {
   records.forEach(function(r) { codes[r.code] = r.name || r.code; });
   var container = document.getElementById('rec-filter-codes');
   if (!container) return;
-  // 只在首次（容器为空时）构建 
+  // 只在首次（容器为空时）构建
   if (container.children.length > 0) return;
   var html = '';
   Object.keys(codes).sort().forEach(function(code) {
@@ -1978,6 +2008,23 @@ function getRecordsFilterState() {
 }
 
 function applyRecordsFilter() {
+  renderRecords();
+}
+
+// ========== 清除全部记录 ==========
+function clearAllRecords() {
+  var records = loadRecords();
+  if (records.length === 0) {
+    showToast('暂无记录可清除');
+    return;
+  }
+  var buyCount = records.filter(function(r) { return r.type === 'buy'; }).length;
+  var sellCount = records.filter(function(r) { return r.type === 'sell'; }).length;
+  var msg = '确定清除全部交易记录？\n\n共 ' + records.length + ' 条记录（买入 ' + buyCount + ' 条，卖出 ' + sellCount + ' 条）\n\n此操作不可撤销！';
+  if (!confirm(msg)) return;
+  saveRecords([]);
+  localStorage.removeItem(MAP_KEY);
+  showToast('已清除全部记录');
   renderRecords();
 }
 
@@ -2090,7 +2137,7 @@ function renderRecords() {
 
 // ========== 盈亏统计 ==========
 
-//  浮盈缓存：code ->  { price, time }
+// 浮盈缓存：code -> { price, time }
 var _floatPriceCache = {};
 
 function parseDateStr(s) {
