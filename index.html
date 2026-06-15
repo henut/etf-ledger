@@ -658,85 +658,14 @@ function cloudPush() {
     showToast('请先填写 GitHub Token');
     return;
   }
-  if (isSyncLocked()) return;
   if (!acquireSyncLock()) return;
 
-  // 推送前先拉取云端，合并后再推（防止覆盖其他设备的记录）
-  var gistId = cfg.gistId;
-  if (gistId) {
-    showToast('正在合并云端数据...');
-    fetch('https://api.github.com/gists/' + gistId, {
-      headers: {
-        'Authorization': 'token ' + cfg.token,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    })
-    .then(function(res) {
-      if (!res.ok) return null; // 忽略拉取错误，直接推本地
-      return res.json();
-    })
-    .then(function(gist) {
-      var localRecords = loadRecords();
-      var localNameMap = loadNameMap();
-      var localFeeConfig = loadFeeConfig();
-
-      if (gist) {
-        var file = gist.files && gist.files['etf-ledger-sync.json'];
-        if (file && file.content) {
-          try {
-            var data = JSON.parse(file.content);
-            var cloudRecords = Array.isArray(data) ? data : (data.records || []);
-            var cloudNameMap = data.nameMap || {};
-            var cloudFeeConfig = data.feeConfig || null;
-
-            // 合并记录：以本地为准！本地没有的记录，即使云端有也不保留
-            // 这解决了"本地删了记录但云端残留导致删除无效"的问题
-            var localIdSet = new Set();
-            var localContentKeySet = new Set();
-            localRecords.forEach(function(r) {
-              if (r.id) localIdSet.add(r.id);
-              var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
-              localContentKeySet.add(ck);
-            });
-
-            // 最终结果 = 本地记录 + 云端中与本地匹配的记录（取本地版本）
-            // 云端独有但本地已删除的记录 → 丢弃
-            var mergedRecords = localRecords.slice(); // 以本地为准
-
-            // nameMap 合并：本地优先
-            var mergedNameMap = Object.assign({}, cloudNameMap, localNameMap);
-
-            // feeConfig：本地有则用本地
-            var mergedFeeConfig = localFeeConfig || cloudFeeConfig;
-
-            saveRecords(mergedRecords);
-            saveNameMap(mergedNameMap);
-            if (mergedFeeConfig) saveFeeConfig(mergedFeeConfig);
-            updateFeeDisplay();
-
-            // 用合并后的数据推送（只有本地记录）
-            doPush(cfg, mergedRecords, mergedNameMap, mergedFeeConfig, gistId);
-            return;
-          } catch(e) { /* 解析失败，直接推本地 */ }
-        }
-      }
-      // 无法拉取云端，直接推本地
-      doPush(cfg, localRecords, localNameMap, localFeeConfig, gistId);
-    })
-    .catch(function() {
-      // 拉取失败，直接推本地
-      var localRecords = loadRecords();
-      var localNameMap = loadNameMap();
-      var localFeeConfig = loadFeeConfig();
-      doPush(cfg, localRecords, localNameMap, localFeeConfig, gistId);
-    });
-  } else {
-    // 首次推送（无 gistId），直接推
-    var localRecords = loadRecords();
-    var localNameMap = loadNameMap();
-    var localFeeConfig = loadFeeConfig();
-    doPush(cfg, localRecords, localNameMap, localFeeConfig, null);
-  }
+  // 直接推送本地记录到云端（完全覆盖，不合并）
+  var localRecords = loadRecords();
+  var localNameMap = loadNameMap();
+  var localFeeConfig = loadFeeConfig();
+  doPush(cfg, localRecords, localNameMap, localFeeConfig, cfg.gistId);
+}
 }
 
 // 强制推送：直接用本地记录覆盖云端（不清空merge，不做拉取）
@@ -877,30 +806,18 @@ function cloudPull() {
       feeConfig = data.feeConfig || null;
     }
 
-    // 合并云端和本地记录：以本地为准！本地没有的记录，即使云端有也不保留
-    var localRecords = loadRecords();
-    var localIdSet = new Set();
-    localRecords.forEach(function(r) { if (r.id) localIdSet.add(r.id); });
-
-    // 只保留云端中与本地 ID 匹配的记录（取本地版本），加上本地独有记录
-    // 云端独有但本地已删除的 → 丢弃
-    var mergedRecords = localRecords.slice(); // 以本地为准
-
-    // nameMap 合并：本地优先
-    var existingMap = loadNameMap();
-    Object.assign(existingMap, nameMap);
-    saveRecords(mergedRecords);
-    saveNameMap(existingMap);
+    // 直接用云端数据覆盖本地（完全覆盖策略）
+    saveRecords(records);
+    saveNameMap(nameMap);
     if (feeConfig) saveFeeConfig(feeConfig);
 
-    updateFeeDisplay();
     refreshAll();
 
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
     updateSyncStatusUI();
     releaseSyncLock();
-    showToast('✓ 拉取成功！已用云端 ' + records.length + ' 条记录覆盖本地');
+    showToast('✓ 拉取成功！已同步 ' + records.length + ' 条记录');
   })
   .catch(function(err) {
     releaseSyncLock();
