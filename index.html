@@ -665,11 +665,23 @@ function cloudPush() {
             var cloudNameMap = data.nameMap || {};
             var cloudFeeConfig = data.feeConfig || null;
 
-            // 合并记录：以 ID 为 key，本地和云端都保留（云端有则覆盖本地）
+            // 合并记录：先按 ID 去重，再按内容去重（防止两端 ID 格式不同导致重复）
             var recordMap = {};
-            cloudRecords.forEach(function(r) { if (r.id) recordMap[r.id] = r; });
-            localRecords.forEach(function(r) { if (r.id) recordMap[r.id] = r; }); // 本地优先（含最新关联状态）
-            var mergedRecords = Object.values(recordMap);
+            var contentKeyMap = {};
+            // 先放云端记录
+            cloudRecords.forEach(function(r) {
+              if (r.id) recordMap[r.id] = r;
+              var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
+              contentKeyMap[ck] = r;
+            });
+            // 再放本地记录（本地优先：覆盖云端同一 ID 或同一内容的记录）
+            localRecords.forEach(function(r) {
+              if (r.id) recordMap[r.id] = r;
+              var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
+              contentKeyMap[ck] = r; // 本地优先
+            });
+            // 用 contentKeyMap 生成最终合并结果（内容去重）
+            var mergedRecords = Object.values(contentKeyMap);
 
             // nameMap 合并：本地优先
             var mergedNameMap = Object.assign({}, cloudNameMap, localNameMap);
@@ -845,10 +857,29 @@ function cloudPull() {
       feeConfig = data.feeConfig || null;
     }
 
-    // 完全用云端数据覆盖本地（云端为唯一真相源）
+    // 合并云端和本地记录（按 ID + 内容去重）
+    var localRecords = loadRecords();
+    var contentKeyMap = {};
+
+    // 先放云端记录
+    records.forEach(function(r) {
+      if (r.id) contentKeyMap[r.id] = r;
+      var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
+      contentKeyMap['ck_' + ck] = r;
+    });
+    // 再放本地记录（本地优先）
+    localRecords.forEach(function(r) {
+      if (r.id && !contentKeyMap[r.id]) contentKeyMap[r.id] = r;
+      var ck = (r.code||'') + '_' + (r.type||'') + '_' + (r.date||'') + '_' + (r.quantity||0) + '_' + (r.amount||0);
+      contentKeyMap['ck_' + ck] = r; // 本地优先
+    });
+
+    var mergedRecords = Object.values(contentKeyMap);
+
+    // nameMap 合并：本地优先
     var existingMap = loadNameMap();
     Object.assign(existingMap, nameMap);
-    saveRecords(records);
+    saveRecords(mergedRecords);
     saveNameMap(existingMap);
     if (feeConfig) saveFeeConfig(feeConfig);
 
