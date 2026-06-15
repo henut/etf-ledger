@@ -666,7 +666,6 @@ function cloudPush() {
   var localFeeConfig = loadFeeConfig();
   doPush(cfg, localRecords, localNameMap, localFeeConfig, cfg.gistId);
 }
-}
 
 // 强制推送：直接用本地记录覆盖云端（不清空merge，不做拉取）
 function cloudForcePush() {
