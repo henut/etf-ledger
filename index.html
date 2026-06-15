@@ -633,16 +633,87 @@ function cloudPush() {
     return;
   }
 
+  // 推送前先拉取云端，合并后再推（防止覆盖其他设备的记录）
+  var gistId = cfg.gistId;
+  if (gistId) {
+    showToast('正在合并云端数据...');
+    fetch('https://api.github.com/gists/' + gistId, {
+      headers: {
+        'Authorization': 'token ' + cfg.token,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    })
+    .then(function(res) {
+      if (!res.ok) return null; // 忽略拉取错误，直接推本地
+      return res.json();
+    })
+    .then(function(gist) {
+      var localRecords = loadRecords();
+      var localNameMap = loadNameMap();
+      var localFeeConfig = loadFeeConfig();
+
+      if (gist) {
+        var file = gist.files && gist.files['etf-ledger-sync.json'];
+        if (file && file.content) {
+          try {
+            var data = JSON.parse(file.content);
+            var cloudRecords = Array.isArray(data) ? data : (data.records || []);
+            var cloudNameMap = data.nameMap || {};
+            var cloudFeeConfig = data.feeConfig || null;
+
+            // 合并记录：以 ID 为 key，本地和云端都保留（云端有则覆盖本地）
+            var recordMap = {};
+            cloudRecords.forEach(function(r) { if (r.id) recordMap[r.id] = r; });
+            localRecords.forEach(function(r) { if (r.id) recordMap[r.id] = r; }); // 本地优先（含最新关联状态）
+            var mergedRecords = Object.values(recordMap);
+
+            // nameMap 合并：本地优先
+            var mergedNameMap = Object.assign({}, cloudNameMap, localNameMap);
+
+            // feeConfig：本地有则用本地
+            var mergedFeeConfig = localFeeConfig || cloudFeeConfig;
+
+            saveRecords(mergedRecords);
+            saveNameMap(mergedNameMap);
+            if (mergedFeeConfig) saveFeeConfig(mergedFeeConfig);
+            updateFeeDisplay();
+
+            // 用合并后的数据推送
+            doPush(cfg, mergedRecords, mergedNameMap, mergedFeeConfig, gistId);
+            return;
+          } catch(e) { /* 解析失败，直接推本地 */ }
+        }
+      }
+      // 无法拉取云端，直接推本地
+      doPush(cfg, localRecords, localNameMap, localFeeConfig, gistId);
+    })
+    .catch(function() {
+      // 拉取失败，直接推本地
+      var localRecords = loadRecords();
+      var localNameMap = loadNameMap();
+      var localFeeConfig = loadFeeConfig();
+      doPush(cfg, localRecords, localNameMap, localFeeConfig, gistId);
+    });
+  } else {
+    // 首次推送（无 gistId），直接推
+    var localRecords = loadRecords();
+    var localNameMap = loadNameMap();
+    var localFeeConfig = loadFeeConfig();
+    doPush(cfg, localRecords, localNameMap, localFeeConfig, null);
+  }
+}
+
+// 实际执行推送的内部函数
+function doPush(cfg, records, nameMap, feeConfig, gistId) {
   var data = {
     version: 1,
     exportTime: new Date().toISOString(),
-    records: loadRecords(),
-    nameMap: loadNameMap(),
-    feeConfig: loadFeeConfig()
+    records: records,
+    nameMap: nameMap,
+    feeConfig: feeConfig
   };
   var jsonStr = JSON.stringify(data);
 
-  var gistId = cfg.gistId;
   var method = gistId ? 'PATCH' : 'POST';
   var url = gistId
     ? 'https://api.github.com/gists/' + gistId
@@ -673,11 +744,11 @@ function cloudPush() {
     return res.json();
   })
   .then(function(result) {
-    // 保存 Gist ID（首次创建时）
     if (!gistId && result.id) {
       cfg.gistId = result.id;
       localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
-      document.getElementById('sync-gist-id').value = result.id;
+      var el = document.getElementById('sync-gist-id');
+      if (el) el.value = result.id;
       updateSyncInfo();
       showToast('✓ 推送成功！Gist ID: ' + result.id);
     } else {
@@ -691,6 +762,14 @@ function cloudPush() {
     showSyncError(err.message);
     showToast('推送失败: ' + err.message);
   });
+}
+
+// 6 小时周期同步（cloudPush 内含拉取+合并+推送完整逻辑）
+var SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+var _periodicSyncTimer = null;
+
+function periodicSync() {
+  cloudPush();
 }
 
 // 从 GitHub Gist 拉取数据
@@ -733,27 +812,10 @@ function cloudPull() {
       feeConfig = data.feeConfig || null;
     }
 
-    // 合并策略：以云端为准，云端有则替换本地（含关联状态），云端没有的本地记录保留
-    var gistIds = new Set();
-    records.forEach(function(r) { if (r.id) gistIds.add(r.id); });
-    var existing = loadRecords();
-    var mergedRecords = [];
-    // 先放云端记录（云端为准，关联状态等变更会覆盖本地）
-    records.forEach(function(r) {
-      if (r.id) mergedRecords.push(r);
-    });
-    // 再放仅本地记录（未推送到云端，云端没有的）
-    existing.forEach(function(r) {
-      if (r.id && !gistIds.has(r.id)) {
-        mergedRecords.push(r);
-      }
-    });
-
-    // 同步名称映射
+    // 完全用云端数据覆盖本地（云端为唯一真相源）
     var existingMap = loadNameMap();
     Object.assign(existingMap, nameMap);
-
-    saveRecords(mergedRecords);
+    saveRecords(records);
     saveNameMap(existingMap);
     if (feeConfig) saveFeeConfig(feeConfig);
 
@@ -763,10 +825,10 @@ function cloudPull() {
     cfg.lastSyncTime = new Date().toISOString();
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(cfg));
     updateSyncStatusUI();
-    var localOnly = mergedRecords.length - records.length;
-    var msg = '✓ 拉取成功！云端 ' + records.length + ' 条';
-    if (localOnly > 0) msg += '，保留本地 ' + localOnly + ' 条';
-    showToast(msg);
+    showToast('✓ 拉取成功！已用云端 ' + records.length + ' 条记录覆盖本地');
+
+    // 拉取完成后推送本地最新（含 nameMap/feeConfig）
+    cloudPush();
   })
   .catch(function(err) {
     showSyncError(err.message);
@@ -782,66 +844,9 @@ function autoSyncDebounced() {
   _syncDebounceTimer = setTimeout(periodicSync, 5000);
 }
 
-// 6 小时周期同步（拉取+推送）
-var SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6小时
-var _periodicSyncTimer = null;
-
+// 6 小时周期同步（直接调用 cloudPush，内含拉取合并推送完整逻辑）
 function periodicSync() {
-  var cfg = loadSyncConfig();
-  if (!cfg.token || !cfg.gistId) return;
-
-  // 先拉取云端数据合并，再推送本地最新
-  fetch('https://api.github.com/gists/' + cfg.gistId, {
-    headers: {
-      'Authorization': 'token ' + cfg.token,
-      'Accept': 'application/vnd.github.v3+json'
-    }
-  })
-  .then(function(res) { if (!res.ok) throw new Error(''); return res.json(); })
-  .then(function(gist) {
-    var file = gist.files && gist.files['etf-ledger-sync.json'];
-    if (!file || !file.content) { cloudPush(); return; }
-    var data = JSON.parse(file.content);
-    var records = Array.isArray(data) ? data : (data.records || []);
-
-    // 合并策略：以云端为准，云端有则替换本地（含关联状态），云端没有的本地记录保留
-    var gistIds = new Set();
-    records.forEach(function(r) { if (r.id) gistIds.add(r.id); });
-    var existing = loadRecords();
-    var mergedRecords = [];
-    // 先放云端记录（云端为准，关联状态等变更会覆盖本地）
-    records.forEach(function(r) {
-      if (r.id) mergedRecords.push(r);
-    });
-    // 再放仅本地记录（未推送到云端，云端没有的）
-    existing.forEach(function(r) {
-      if (r.id && !gistIds.has(r.id)) {
-        mergedRecords.push(r);
-      }
-    });
-
-    // 保存合并后的记录
-    saveRecords(mergedRecords);
-
-    // 更新 nameMap 和 feeConfig
-    if (data.nameMap) {
-      var existingMap = loadNameMap();
-      Object.assign(existingMap, data.nameMap);
-      saveNameMap(existingMap);
-    }
-    if (data.feeConfig) saveFeeConfig(data.feeConfig);
-
-    updateFeeDisplay();
-    refreshAll();
-    showToast('☁ 自动同步：' + records.length + ' 条云端记录已合并');
-
-    // 拉取完成后推送本地最新（含仅本地的记录）
-    cloudPush();
-  })
-  .catch(function() {
-    // 拉取失败也尝试推送
-    cloudPush();
-  });
+  cloudPush();
 }
 
 // 启动周期同步
