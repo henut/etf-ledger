@@ -401,6 +401,7 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
       <button class="btn btn-warning" onclick="cloudForcePush()" style="background:#fff3e0;border-color:#ff9800;color:#e65100;">⚠ 强制推送（覆盖云端）</button>
       <button class="btn btn-outline" onclick="cloudPull()">&#9660; 从云端拉取</button>
       <button class="btn btn-ghost" onclick="diagnoseSync()">🔍 诊断连接</button>
+      <button class="btn btn-ghost" onclick="repairData()" style="color:#E4393C;">🔧 修复持仓数据</button>
       <button class="btn btn-ghost" onclick="saveSyncConfig()">保存设置</button>
     </div>
     <div class="sync-info-row" id="sync-info"></div>
@@ -435,6 +436,93 @@ function saveNameMap(map) {
 }
 
 function genId() { return 'rec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
+
+// 完全重新匹配：从零开始按 FIFO + 日期顺序重新关联所有卖出和买入
+// 解决反T（先卖后买）场景下 linkedBuys 时间倒挂的问题
+function recalculateRemaining() {
+  var records = loadRecords();
+  
+  // 1. 先恢复所有买入的 remaining = quantity，清空所有卖出的 linkedBuys
+  records.forEach(function(r) {
+    if (r.type === 'buy') r.remaining = r.quantity;
+    if (r.type === 'sell') r.linkedBuys = [];
+  });
+  
+  // 2. 按日期排序所有记录
+  records.sort(function(a, b) {
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    // 同一天：买入优先（先买后卖是正T，先卖后买是反T，但同日买入应优先被关联）
+    if (a.type === 'buy' && b.type === 'sell') return -1;
+    if (a.type === 'sell' && b.type === 'buy') return 1;
+    return 0;
+  });
+  
+  // 3. 按日期顺序处理每笔卖出：FIFO 匹配该卖出日期及之前的、同代码的买入记录
+  records.forEach(function(sell) {
+    if (sell.type !== 'sell') return;
+    
+    var sellQty = sell.quantity;
+    var remaining = sellQty;
+    var linkedBuys = [];
+    
+    // 找出同代码、日期 <= 卖出日期、remaining > 0 的买入记录
+    var eligibleBuys = records.filter(function(r) {
+      return r.type === 'buy' && r.code === sell.code && r.remaining > 0 && r.date <= sell.date;
+    });
+    
+    // FIFO：按日期从早到晚匹配
+    eligibleBuys.sort(function(a, b) {
+      if (a.date < b.date) return -1;
+      if (a.date > b.date) return 1;
+      return 0;
+    });
+    
+    for (var i = 0; i < eligibleBuys.length && remaining > 0; i++) {
+      var buy = eligibleBuys[i];
+      var matchQty = Math.min(buy.remaining, remaining);
+      linkedBuys.push({ buyId: buy.id, quantity: matchQty });
+      buy.remaining -= matchQty;
+      remaining -= matchQty;
+    }
+    
+    sell.linkedBuys = linkedBuys;
+    
+    // 如果没有完全匹配（反T场景：卖出时还没有对应的买入），允许关联未来的买入
+    if (remaining > 0) {
+      var futureBuys = records.filter(function(r) {
+        return r.type === 'buy' && r.code === sell.code && r.remaining > 0 && r.date > sell.date;
+      });
+      futureBuys.sort(function(a, b) {
+        if (a.date < b.date) return -1;
+        if (a.date > b.date) return 1;
+        return 0;
+      });
+      for (var j = 0; j < futureBuys.length && remaining > 0; j++) {
+        var buy = futureBuys[j];
+        var matchQty = Math.min(buy.remaining, remaining);
+        linkedBuys.push({ buyId: buy.id, quantity: matchQty });
+        buy.remaining -= matchQty;
+        remaining -= matchQty;
+      }
+    }
+  });
+  
+  // 确保 remaining 不为负数
+  records.forEach(function(r) {
+    if (r.type === 'buy' && r.remaining < 0) r.remaining = 0;
+  });
+  
+  // 恢复原始排序（按 ID / 日期）
+  records.sort(function(a, b) {
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    return 0;
+  });
+  
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  return records;
+}
 
 function loadFeeConfig() {
   try { return JSON.parse(localStorage.getItem('etf_fee_config')) || { rate: 0.5, minFee: 0.1 }; }
@@ -815,6 +903,10 @@ function cloudPull() {
 
     // 直接用云端数据覆盖本地（完全覆盖策略）
     _saveRecordsLock = true; // 阻止 saveRecords 触发 autoSync
+    // 先保存原始数据，然后用 recalculateRemaining 重新匹配（支持反T）
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    recalculateRemaining();
+    var records = loadRecords();
     saveRecords(records);
     _saveRecordsLock = false;
     saveNameMap(nameMap);
@@ -834,6 +926,19 @@ function cloudPull() {
     showSyncError(err.message);
     showToast('拉取失败: ' + err.message);
   });
+}
+
+// 修复持仓数据（重新计算 remaining）
+function repairData() {
+  if (!confirm('将按 FIFO + 日期顺序重新匹配所有卖出和买入记录。\n\n反T（先卖后买）场景：卖出优先匹配当天或之前的买入，未匹配部分会关联后续买入。\n\n此操作不可撤销，确定继续？')) return;
+  var records = recalculateRemaining();
+  _saveRecordsLock = true;
+  saveRecords(records);
+  _saveRecordsLock = false;
+  refreshAll();
+  var total = 0;
+  records.forEach(function(r) { if (r.type === 'buy' && r.remaining > 0) total += r.remaining; });
+  showToast('✓ 数据修复完成！当前持仓总量: ' + total);
 }
 
 // 诊断同步连接
@@ -1728,7 +1833,28 @@ function switchTabDirect(tab) {
 var _hpPriceCache = {};
 
 function renderHoldingPanel() {
+  // 渲染前验证 remaining 一致性（只修复 remaining 数字，不改变 linkedBuys）
   var records = loadRecords();
+  var needsFix = false;
+  var buyMap = {};
+  records.forEach(function(r) { if (r.type === 'buy') buyMap[r.id] = r; });
+  records.forEach(function(r) {
+    if (r.type === 'buy') {
+      // 检查 remaining 是否为非数字或超出 quantity
+      if (typeof r.remaining !== 'number' || isNaN(r.remaining) || r.remaining > r.quantity || r.remaining < 0) {
+        needsFix = true;
+      }
+    }
+    if (r.type === 'sell' && r.linkedBuys) {
+      r.linkedBuys.forEach(function(lb) {
+        var buy = buyMap[lb.buyId];
+        if (!buy) needsFix = true; // 引用了不存在的买入
+      });
+    }
+  });
+  if (needsFix) {
+    records = recalculateRemaining();
+  }
   var nameMap = loadNameMap();
   var container = document.getElementById('holdings-panel-container');
 
@@ -1870,6 +1996,10 @@ function renderHoldingPanel() {
         html += '<div class="hp-b-price">' + b.price.toFixed(3) + '<span style="color:#bbb;">/' + b.avgPrice.toFixed(3) + '</span></div>';
         html += '</div>';
       });
+      // 校正持仓按钮
+      html += '<div style="padding:8px 12px;border-top:1px dashed #e0e0e0;text-align:right;">';
+      html += '<button onclick="event.stopPropagation();showCorrectHolding(\'' + code + '\',' + e.totalQty + ')" style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">📐 校正持仓（当前 ' + e.totalQty.toLocaleString() + '）</button>';
+      html += '</div>';
       html += '</div>'; // hp-batch-group end
     });
 
@@ -1895,6 +2025,90 @@ function toggleHoldingBatch(code) {
   batchEl.style.display = isHidden ? 'block' : 'none';
   if (iconEl) iconEl.textContent = isHidden ? '▼' : '▶';
   if (rowEl) rowEl.classList.toggle('hp-expanded', isHidden);
+}
+
+// ========== 持仓校正 ==========
+function showCorrectHolding(code, currentQty) {
+  var nameMap = loadNameMap();
+  var name = nameMap[code] || BUILTIN_ETF_MAP[code] || code;
+  var input = prompt('【持仓校正】' + name + '（' + code + '）\n\n当前 App 持仓: ' + currentQty.toLocaleString() + ' 股\n\n请输入实际持仓数量:', currentQty);
+  if (input === null) return;
+  var targetQty = parseInt(input);
+  if (isNaN(targetQty) || targetQty < 0) {
+    showToast('⚠ 无效数量');
+    return;
+  }
+  var diff = targetQty - currentQty;
+  if (diff === 0) {
+    showToast('持仓已是 ' + targetQty.toLocaleString() + '，无需校正');
+    return;
+  }
+  
+  var records = loadRecords();
+  var today = new Date();
+  var dateStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  
+  if (diff > 0) {
+    // 需要补买: 创建一笔买入记录
+    // 用该 ETF 最近的成交价作为参考价格
+    var lastPrice = getLastPrice(records, code);
+    var amount = Math.round(lastPrice * diff * 100) / 100;
+    var fee = calcFee(amount);
+    var newRec = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      type: 'buy',
+      code: code,
+      name: name,
+      date: dateStr,
+      price: lastPrice,
+      quantity: diff,
+      amount: amount,
+      fee: fee,
+      remaining: diff,
+      note: '持仓校正（补录 ' + diff + ' 股）',
+      linkedBuys: []
+    };
+    records.push(newRec);
+    saveRecords(records);
+    recalculateRemaining();
+    showToast('✓ 已补录买入 ' + diff + ' 股，持仓校正为 ' + targetQty.toLocaleString());
+  } else {
+    // 需要减仓: 创建一笔卖出记录，关联到最早未扣完的买入
+    var absDiff = Math.abs(diff);
+    var lastPrice = getLastPrice(records, code);
+    var amount = Math.round(lastPrice * absDiff * 100) / 100;
+    var fee = calcFee(amount);
+    var newRec = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      type: 'sell',
+      code: code,
+      name: name,
+      date: dateStr,
+      price: lastPrice,
+      quantity: absDiff,
+      amount: amount,
+      fee: fee,
+      note: '持仓校正（核减 ' + absDiff + ' 股）',
+      linkedBuys: []
+    };
+    records.push(newRec);
+    saveRecords(records);
+    recalculateRemaining();
+    showToast('✓ 已核减卖出 ' + absDiff + ' 股，持仓校正为 ' + targetQty.toLocaleString());
+  }
+  refreshAll();
+}
+
+// 获取某 ETF 最近的成交价（用于校正时的参考价格）
+function getLastPrice(records, code) {
+  var lastPrice = 1.0;
+  for (var i = records.length - 1; i >= 0; i--) {
+    if (records[i].code === code && records[i].price) {
+      lastPrice = records[i].price;
+      break;
+    }
+  }
+  return lastPrice;
 }
 
 function fetchHoldingPrices(etfMap, codes, callback) {
@@ -2533,9 +2747,10 @@ function refreshFloatProfit() {
 
 // ========== 初始化 ==========
 function refreshAll() {
-  if (document.getElementById('tab-holdings').classList.contains('active')) renderHoldingPanel();
-  if (document.getElementById('tab-records').classList.contains('active')) renderRecords();
-  if (document.getElementById('tab-stats').classList.contains('active')) renderStats();
+  // 始终刷新所有面板，确保删除记录后持仓等也能同步更新
+  renderHoldingPanel();
+  renderRecords();
+  renderStats();
 }
 
 (function() {
