@@ -1572,7 +1572,7 @@ function openLinkOverlay(sellId) {
       html += '</div>';
       html += '<div class="batch-row">';
       html += '<span style="font-size:13px;">本次关联:</span>';
-      html += '<input type="number" min="0" max="' + origRemaining + '" value="' + linkedQty + '" data-buy-id="' + buy.id + '" data-max="' + origRemaining + '" oninput="onBatchInput()" style="width:100px;" id="batch-input-' + buy.id + '">';
+      html += '<input type="number" min="0" max="' + origRemaining + '" value="' + linkedQty + '" data-buy-id="' + buy.id + '" data-max="' + origRemaining + '" oninput="onBatchInput()" onchange="onBatchInput()" onkeyup="onBatchInput()" style="width:100px;" id="batch-input-' + buy.id + '">';
       html += '<span style="font-size:12px;color:#999;">份</span>';
       html += '<button type="button" onclick="(function(){var inp=document.getElementById(\'batch-input-' + buy.id + '\');inp.value=' + origRemaining + ';onBatchInput();})()" style="padding:2px 8px;font-size:12px;background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;border-radius:4px;cursor:pointer;margin-left:4px;">全部</button>';
       var profit = (sellNetPrice - buyCostPrice) * linkedQty;
@@ -1607,23 +1607,28 @@ function closeOverlay() {
 }
 
 function onBatchInput() {
-  updateLinkSummary();
+  // 延迟执行确保 DOM 已更新（处理某些浏览器的异步行为）
+  setTimeout(updateLinkSummary, 10);
 }
 
 function updateLinkSummary() {
   var sellId = getCurrentSellId();
-  if (!sellId) return;
+  if (!sellId) { console.log('[updateLinkSummary] 无法获取 sellId'); return; }
   var records = loadRecords();
   var sell = records.find(function(r) { return r.id === sellId; });
-  if (!sell) return;
+  if (!sell) { console.log('[updateLinkSummary] 未找到卖出记录:', sellId); return; }
 
   var inputs = document.querySelectorAll('#batch-list input[type="number"]');
+  console.log('[updateLinkSummary] 找到输入框数量:', inputs.length, '卖出总量:', sell.quantity);
+
   var totalAllocated = 0;
   var totalProfit = 0;
   var sellNetPrice = (sell.amount - sell.fee) / sell.quantity;
 
   inputs.forEach(function(inp) {
-    var qty = parseInt(inp.value) || 0;
+    var val = inp.value;
+    var qty = parseInt(val) || 0;
+    console.log('  buyId:', inp.dataset.buyId, 'value:', val, 'qty:', qty);
     totalAllocated += qty;
     var buyId = inp.dataset.buyId;
     var buy = records.find(function(r) { return r.id === buyId; });
