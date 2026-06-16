@@ -1884,15 +1884,24 @@ function renderHoldingPanel() {
     }
   });
 
+  // 持仓数量：直接按 买入总量 - 卖出总量 计算（不依赖 linkedBuys 关联）
+  var qtyMap = {};
+  records.forEach(function(rec) {
+    if (!qtyMap[rec.code]) qtyMap[rec.code] = { buyQty: 0, sellQty: 0 };
+    if (rec.type === 'buy') qtyMap[rec.code].buyQty += rec.quantity;
+    if (rec.type === 'sell') qtyMap[rec.code].sellQty += rec.quantity;
+  });
+
   // 再汇总有剩余持仓的 ETF
   var etfMap = {};
   records.forEach(function(rec) {
     if (rec.type === 'buy' && rec.remaining > 0) {
       if (!etfMap[rec.code]) {
+        var q = qtyMap[rec.code] || { buyQty: 0, sellQty: 0 };
         etfMap[rec.code] = {
           code: rec.code,
           name: rec.name || nameMap[rec.code] || BUILTIN_ETF_MAP[rec.code] || rec.code,
-          totalQty: 0,
+          totalQty: q.buyQty - q.sellQty, // 直接用买入总量 - 卖出总量
           totalCost: 0,
           totalSimpleCost: 0,
           batches: []
@@ -1901,7 +1910,6 @@ function renderHoldingPanel() {
       var batchCost = (rec.amount + rec.fee) / rec.quantity * rec.remaining;
       var batchPrice = (rec.amount + rec.fee) / rec.quantity; // 含手续费摊薄单价
       var batchSimpleCost = rec.price * rec.remaining; // 不含手续费的原始买入成本
-      etfMap[rec.code].totalQty += rec.remaining;
       etfMap[rec.code].totalCost += batchCost;
       etfMap[rec.code].totalSimpleCost += batchSimpleCost;
       etfMap[rec.code].batches.push({
@@ -1917,25 +1925,30 @@ function renderHoldingPanel() {
     }
   });
 
-  var codes = Object.keys(etfMap).sort();
+  // 过滤掉持仓为 0 或负数的 ETF
+  var codes = Object.keys(etfMap).filter(function(code) {
+    return etfMap[code].totalQty > 0;
+  }).sort();
 
   if (codes.length === 0) {
     container.innerHTML = '<div class="hp-empty">📭 暂无持仓，快去买入第一只 ETF 吧！</div>';
     return;
   }
 
-  // 计算各只均价
+  // 计算各只均价（基于总买入/总卖出，与持仓数量口径一致）
   codes.forEach(function(code) {
     var e = etfMap[code];
     var b = buyMap[code] || { totalBuyAmount: 0, totalBuyFee: 0 };
     var s = sellMap[code] || { totalSellAmount: 0, totalSellFee: 0 };
-    e.avgCost = e.totalQty > 0 ? e.totalCost / e.totalQty : 0; // 含费摊薄成本价
-    e.avgPriceSimple = e.totalQty > 0 ? e.totalSimpleCost / e.totalQty : 0; // 不含费成本价
-    // 究极成本价 = (总买入含费 - 总卖出净得) / 剩余数量
+    // 究极成本价 = (总买入含费 - 总卖出净得) / 持仓数量
     var totalBuyWithFee = b.totalBuyAmount + b.totalBuyFee;
     var totalSellNet = s.totalSellAmount - s.totalSellFee;
-    e.ultimateCost = totalBuyWithFee - totalSellNet; // 究极持仓成本
-    e.avgUltimateCost = e.totalQty > 0 ? e.ultimateCost / e.totalQty : 0; // 究极成本价
+    e.ultimateCost = totalBuyWithFee - totalSellNet; // 究极持仓总成本
+    e.avgUltimateCost = e.totalQty > 0 ? e.ultimateCost / e.totalQty : 0; // 究极成本价（主要展示）
+    e.avgCost = e.avgUltimateCost; // 含费摊薄成本价 = 究极成本价
+    // 不含费成本价 = 究极成本价减去每股摊薄的手续费
+    var totalFeePerShare = e.totalQty > 0 ? (b.totalBuyFee + s.totalSellFee) / e.totalQty : 0;
+    e.avgPriceSimple = e.avgUltimateCost - totalFeePerShare; // 不含费成本价
   });
 
   // 渲染骨架（先用成本价占位）
@@ -1959,9 +1972,9 @@ function renderHoldingPanel() {
       var cached = priceMap && priceMap[code];
       var price = cached && cached.price ? cached.price : 0;
       var mktVal = price > 0 ? price * e.totalQty : null;
-      // 浮动盈亏基于含费摊薄成本价（avgCost）
-      var pnl = (mktVal !== null) ? mktVal - e.totalCost : null;
-      var pnlPct = (pnl !== null && e.totalCost > 0) ? pnl / e.totalCost * 100 : null;
+      // 浮动盈亏基于究极成本（总买入含费 - 总卖出净得）
+      var pnl = (mktVal !== null) ? mktVal - e.ultimateCost : null;
+      var pnlPct = (pnl !== null && e.ultimateCost > 0) ? pnl / e.ultimateCost * 100 : null;
       var pnlColorClass = pnl === null ? 'hp-loading' : (pnl > 0 ? 'hp-pos' : (pnl < 0 ? 'hp-neg' : 'hp-zero'));
 
       // 主行：点击展开/折叠批次明细
@@ -2657,16 +2670,20 @@ function renderStats() {
   cardsHtml += '<div class="stats-card" id="card-float-total"><div class="label">浮动盈亏</div><div class="value-sm floating-loading" id="float-total-val">获取中…</div></div>';
   document.getElementById('stats-cards').innerHTML = cardsHtml;
 
-  // 按 ETF 分组
+  // 按 ETF 分组，持仓数量用 买入总量 - 卖出总量 计算
   var etfMap = {};
   records.forEach(function(rec) {
     var key = rec.code;
-    if (!etfMap[key]) etfMap[key] = { code: rec.code, name: rec.name, buys: [], sells: [], remainingBuys: [] };
+    if (!etfMap[key]) etfMap[key] = { code: rec.code, name: rec.name, buys: [], sells: [], remainingBuys: [], buyQty: 0, sellQty: 0, buyAmountWithFee: 0, sellAmountNet: 0 };
     if (rec.type === 'buy') {
       etfMap[key].buys.push(rec);
+      etfMap[key].buyQty += rec.quantity;
+      etfMap[key].buyAmountWithFee += (rec.amount + rec.fee);
       if (rec.remaining > 0) etfMap[key].remainingBuys.push(rec);
     } else {
       etfMap[key].sells.push(rec);
+      etfMap[key].sellQty += rec.quantity;
+      etfMap[key].sellAmountNet += (rec.amount - rec.fee);
     }
   });
 
@@ -2714,12 +2731,8 @@ function renderStats() {
     }
     var hasSold = group.sells.some(function(s) { return s.linkedBuys && s.linkedBuys.length > 0; });
 
-    var totalRemainingQty = 0;
-    var totalRemainingCost = 0;
-    group.remainingBuys.forEach(function(buy) {
-      totalRemainingQty += buy.remaining;
-      totalRemainingCost += (buy.amount + buy.fee) / buy.quantity * buy.remaining;
-    });
+    var totalRemainingQty = group.buyQty - group.sellQty; // 买入总量 - 卖出总量
+    var totalRemainingCost = group.buyAmountWithFee - group.sellAmountNet; // 总买入含费 - 总卖出净得
     var avgCost = totalRemainingQty > 0 ? totalRemainingCost / totalRemainingQty : 0;
 
     etfHtml += '<table><thead><tr><th>已实现盈亏</th><th>实际收益率</th><th>年化收益率</th><th>持仓数量</th><th>持仓均价(含费)</th><th>持仓成本</th></tr></thead><tbody>';
@@ -2769,9 +2782,7 @@ var _floatCallbackId = 0;
 function fetchAllFloatPrices(etfMap) {
   var records = loadRecords();
   var holdingGroups = Object.values(etfMap).filter(function(g) {
-    var qty = 0;
-    g.remainingBuys.forEach(function(b) { qty += b.remaining; });
-    return qty > 0;
+    return (g.buyQty - g.sellQty) > 0;
   });
 
   if (holdingGroups.length === 0) {
@@ -2787,12 +2798,8 @@ function fetchAllFloatPrices(etfMap) {
 
   holdingGroups.forEach(function(group) {
     var code = group.code;
-    var totalRemainingQty = 0;
-    var totalRemainingCost = 0;
-    group.remainingBuys.forEach(function(buy) {
-      totalRemainingQty += buy.remaining;
-      totalRemainingCost += (buy.amount + buy.fee) / buy.quantity * buy.remaining;
-    });
+    var totalRemainingQty = group.buyQty - group.sellQty; // 买入总量 - 卖出总量
+    var totalRemainingCost = group.buyAmountWithFee - group.sellAmountNet; // 总买入含费 - 总卖出净得
     var avgCost = totalRemainingQty > 0 ? totalRemainingCost / totalRemainingQty : 0;
 
     // 检查缓存（60秒内有效）
