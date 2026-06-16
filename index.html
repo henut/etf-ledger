@@ -1665,7 +1665,8 @@ function updateLinkSummary() {
 
 function getCurrentSellId() {
   var content = document.getElementById('link-content').innerHTML;
-  var match = content.match(/confirmLink\('(rec_\w+_\w+)'\)/);
+  // 匹配任意 ID 格式（原始 rec_xxx_yyy 以及导入/校正的任意字符串 ID）
+  var match = content.match(/confirmLink\('([^']+)'\)/);
   return match ? match[1] : null;
 }
 
@@ -2064,7 +2065,7 @@ function showCorrectHolding(code, currentQty) {
     var amount = Math.round(lastPrice * diff * 100) / 100;
     var fee = calcFee(amount);
     var newRec = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      id: genId(),
       type: 'buy',
       code: code,
       name: name,
@@ -2088,7 +2089,7 @@ function showCorrectHolding(code, currentQty) {
     var amount = Math.round(lastPrice * absDiff * 100) / 100;
     var fee = calcFee(amount);
     var newRec = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      id: genId(),
       type: 'sell',
       code: code,
       name: name,
@@ -2186,7 +2187,7 @@ function parseAndImportBroker(text, fileName) {
     var dateFormatted = dateStr.slice(0,4) + '-' + dateStr.slice(4,6) + '-' + dateStr.slice(6,8);
     
     var rec = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6) + '_' + newRecords.length,
+      id: genId(),
       type: action === '买入' ? 'buy' : 'sell',
       code: code,
       name: name,
