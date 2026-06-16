@@ -404,6 +404,10 @@ th { color: #999; font-weight: 500; font-size: 12px; background: #fafafa; white-
       <button class="btn btn-ghost" onclick="repairData()" style="color:#E4393C;">🔧 修复持仓数据</button>
       <button class="btn btn-ghost" onclick="saveSyncConfig()">保存设置</button>
     </div>
+    <div class="sync-btn-row" style="margin-top:6px;">
+      <button class="btn btn-ghost" onclick="triggerBrokerImport()" style="color:#1565C0;">📥 导入券商成交</button>
+      <input type="file" id="broker-file-input" accept=".txt,.csv,.xls,.xlsx" style="display:none;" onchange="handleBrokerFile(event)">
+    </div>
     <div class="sync-info-row" id="sync-info"></div>
   </div>
 </div>
@@ -2109,6 +2113,168 @@ function getLastPrice(records, code) {
     }
   }
   return lastPrice;
+}
+
+// ========== 券商成交导入 ==========
+function triggerBrokerImport() {
+  document.getElementById('broker-file-input').click();
+}
+
+function handleBrokerFile(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  // 重置 input，允许重复选择同一文件
+  event.target.value = '';
+  
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var raw = e.target.result;
+    // 尝试用 GBK 解码（券商导出通常是 GBK）
+    var text;
+    try {
+      text = new TextDecoder('gbk').decode(new Uint8Array(raw));
+    } catch(err) {
+      // fallback: 按 UTF-8 读
+      text = new TextDecoder('utf-8').decode(new Uint8Array(raw));
+    }
+    parseAndImportBroker(text, file.name);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseAndImportBroker(text, fileName) {
+  var lines = text.split(/\r?\n/);
+  var newRecords = [];
+  var nameMapUpdates = {};
+  var parseErrors = [];
+  
+  lines.forEach(function(line, lineIdx) {
+    var parts = line.split('\t');
+    // 券商格式：成交日期  成交时间  证券代码  证券名称  操作  成交数量  成交均价  成交金额  ...  手续费  ...
+    if (parts.length < 9) return;
+    var dateStr = parts[0].trim();
+    var code = parts[2].trim();
+    var name = parts[3].trim();
+    var action = parts[4].trim();
+    var qtyStr = parts[5].trim();
+    var priceStr = parts[6].trim();
+    var amountStr = parts[7].trim();
+    var feeStr = parts.length >= 12 ? parts[10].trim() : '0';
+    
+    // 跳过表头和非数据行
+    if (!/^\d{8}$/.test(dateStr)) return;
+    if (!/^\d{6}$/.test(code)) return;
+    if (action !== '买入' && action !== '卖出') return;
+    
+    var qty = parseInt(qtyStr);
+    var price = parseFloat(priceStr);
+    var amount = parseFloat(amountStr);
+    var fee = parseFloat(feeStr);
+    
+    if (isNaN(qty) || isNaN(price) || isNaN(amount)) {
+      parseErrors.push('第 ' + (lineIdx + 1) + ' 行: 数量/价格/金额解析失败');
+      return;
+    }
+    if (isNaN(fee)) fee = 0;
+    
+    // 日期格式转换: 20260615 → 2026-06-15
+    var dateFormatted = dateStr.slice(0,4) + '-' + dateStr.slice(4,6) + '-' + dateStr.slice(6,8);
+    
+    var rec = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6) + '_' + newRecords.length,
+      type: action === '买入' ? 'buy' : 'sell',
+      code: code,
+      name: name,
+      date: dateFormatted,
+      price: price,
+      quantity: qty,
+      amount: amount,
+      fee: fee,
+      remaining: action === '买入' ? qty : 0,
+      note: '',
+      linkedBuys: []
+    };
+    
+    newRecords.push(rec);
+    nameMapUpdates[code] = name;
+  });
+  
+  if (newRecords.length === 0) {
+    alert('❌ 未从文件中解析到有效成交记录\n\n文件: ' + fileName + '\n\n请确认文件为券商导出的成交明细（支持华宝等券商格式，Tab分隔）');
+    return;
+  }
+  
+  // 去重：与现有记录比较（按 日期+类型+代码+数量+金额 匹配）
+  var existingRecords = loadRecords();
+  var existingKeys = {};
+  existingRecords.forEach(function(r) {
+    var key = r.date + '_' + r.type + '_' + r.code + '_' + r.quantity + '_' + Math.round(r.amount);
+    existingKeys[key] = true;
+  });
+  
+  var uniqueRecords = [];
+  var dupCount = 0;
+  newRecords.forEach(function(r) {
+    var key = r.date + '_' + r.type + '_' + r.code + '_' + r.quantity + '_' + Math.round(r.amount);
+    if (existingKeys[key]) {
+      dupCount++;
+    } else {
+      uniqueRecords.push(r);
+      existingKeys[key] = true; // 防止文件内重复
+    }
+  });
+  
+  // 按日期排序
+  uniqueRecords.sort(function(a, b) {
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    if (a.type === 'buy' && b.type === 'sell') return -1;
+    if (a.type === 'sell' && b.type === 'buy') return 1;
+    return 0;
+  });
+  
+  // 生成汇总信息
+  var summary = {};
+  uniqueRecords.forEach(function(r) {
+    if (!summary[r.code]) summary[r.code] = { name: r.name, buys: 0, buyQty: 0, sells: 0, sellQty: 0 };
+    if (r.type === 'buy') { summary[r.code].buys++; summary[r.code].buyQty += r.quantity; }
+    else { summary[r.code].sells++; summary[r.code].sellQty += r.quantity; }
+  });
+  
+  var summaryText = '';
+  Object.keys(summary).sort().forEach(function(code) {
+    var s = summary[code];
+    summaryText += '\n  ' + code + ' ' + s.name + ': 买入 ' + s.buys + '笔(' + s.buyQty + '股) 卖出 ' + s.sells + '笔(' + s.sellQty + '股)';
+  });
+  
+  var msg = '【券商成交导入预览】\n\n';
+  msg += '文件: ' + fileName + '\n';
+  msg += '解析到: ' + newRecords.length + ' 条成交记录\n';
+  if (dupCount > 0) msg += '去重跳过: ' + dupCount + ' 条（已存在于本地）\n';
+  msg += '待导入: ' + uniqueRecords.length + ' 条' + summaryText;
+  if (parseErrors.length > 0) {
+    msg += '\n\n⚠ 解析异常 ' + parseErrors.length + ' 条:\n' + parseErrors.slice(0, 5).join('\n');
+  }
+  msg += '\n\n确定导入？';
+  
+  if (!confirm(msg)) return;
+  
+  // 合并记录
+  var allRecords = existingRecords.concat(uniqueRecords);
+  _saveRecordsLock = true;
+  saveRecords(allRecords);
+  recalculateRemaining();
+  _saveRecordsLock = false;
+  
+  // 更新名称映射
+  var nameMap = loadNameMap();
+  Object.keys(nameMapUpdates).forEach(function(code) {
+    if (!nameMap[code]) nameMap[code] = nameMapUpdates[code];
+  });
+  saveNameMap(nameMap);
+  
+  refreshAll();
+  showToast('✓ 成功导入 ' + uniqueRecords.length + ' 条成交记录' + (dupCount > 0 ? '（跳过 ' + dupCount + ' 条重复）' : ''));
 }
 
 function fetchHoldingPrices(etfMap, codes, callback) {
