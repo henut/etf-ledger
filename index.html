@@ -1660,7 +1660,7 @@ function updateLinkSummary() {
   }
 
   var btn = document.getElementById('btn-confirm-link');
-  if (btn) btn.disabled = (totalAllocated !== sell.quantity);
+  if (btn) btn.disabled = (totalAllocated <= 0 || totalAllocated > sell.quantity);
 }
 
 function getCurrentSellId() {
@@ -1691,8 +1691,8 @@ function confirmLink(sellId) {
     }
   });
 
-  if (totalAllocated !== sell.quantity) {
-    alert('分配数量总和必须等于卖出数量 ' + sell.quantity + ' 份');
+  if (totalAllocated > sell.quantity) {
+    alert('分配数量总和超出卖出数量 ' + sell.quantity + ' 份，请调整');
     return;
   }
 
